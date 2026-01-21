@@ -77,20 +77,19 @@
 //     </div>
 //   );
 // }
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { apiFetch } from '@/api/client';
-import { User } from '@/types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch } from "@/api/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const { login } = useAuth();
@@ -106,25 +105,44 @@ export default function LoginPage() {
 
       if (!result.success) {
         toast({
-          title: 'Login Failed',
-          //description: result.error ?? 'Invalid credentials',
-          variant: 'destructive',
+          title: "Login Failed",
+          variant: "destructive",
         });
         return;
       }
 
-      // cookie is set -> now get role from /me
-      const me = await apiFetch<User>('/me');
+      // cookie is set -> now get role/team from /me
+      const me = await apiFetch<any>("/me");
 
+      // ✅ CEO: always go directly to dashboard (no onboarding)
+      if (me?.role === "ceo") {
+        navigate("/ceo", { replace: true });
+        return;
+      }
+
+      // 1) Role not selected yet -> onboarding
+      if (!me?.role) {
+        navigate("/select-role", { replace: true });
+        return;
+      }
+
+      // 2) Team not joined yet -> onboarding (only for member/leader)
+      const teamId = me?.team?.id ?? me?.teamId ?? null;
+      if (!teamId) {
+        navigate("/join-team", { replace: true });
+        return;
+      }
+
+      // 3) Normal dashboards
       const redirectPath =
-        { ceo: '/ceo', team_leader: '/leader', team_member: '/member' }[me.role] || '/';
+        { team_leader: "/leader", team_member: "/member" }[me.role] || "/login";
 
-      navigate(redirectPath);
+      navigate(redirectPath, { replace: true });
     } catch (err: any) {
       toast({
-        title: 'Login Failed',
-        description: err?.message ?? 'Unexpected error',
-        variant: 'destructive',
+        title: "Login Failed",
+        description: err?.message ?? "Unexpected error",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -169,9 +187,16 @@ export default function LoginPage() {
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isLoading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
+
+          <div className="mt-4 text-center text-sm text-muted-foreground">
+            Don’t have an account?{" "}
+            <Link to="/signup" className="underline text-foreground">
+              Create one
+            </Link>
+          </div>
 
           <div className="mt-6 rounded-lg bg-muted/50 p-4 text-sm">
             <p className="font-medium mb-2">Demo Accounts:</p>

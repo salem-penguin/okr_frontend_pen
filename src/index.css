@@ -9,7 +9,7 @@
 All colors MUST be HSL.
 */
 
-@layer base {
+/* @layer base {
   :root {
     --background: 0 0% 96%;
     --foreground: 0 0% 9%;
@@ -147,7 +147,145 @@ All colors MUST be HSL.
     --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
     --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
   }
+} */
+
+@layer base {
+  :root {
+    /* Clean, premium SaaS background */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%; /* deep navy-ish */
+
+    /* Surfaces */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Brand: warm amber/gold primary (CTA), deep navy secondary */
+    --primary: 45 96% 50%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 222 47% 11%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Muted neutrals */
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    /* Accent: subtle highlight */
+    --accent: 45 96% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    /* Borders / inputs: lighter, cleaner */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 45 96% 50%;
+
+    /* Slightly more premium rounding */
+    --radius: 0.9rem;
+
+    /* Sidebar (if you use it) */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 45 96% 50%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 45 96% 50%;
+    --sidebar: 0 0% 100%;
+
+    /* Charts: keep warm-to-neutral palette */
+    --chart-1: 45 96% 50%;
+    --chart-2: 222 47% 11%;
+    --chart-3: 215 16% 47%;
+    --chart-4: 210 40% 96%;
+    --chart-5: 28 90% 55%;
+
+    /* Typography (keep Roboto as primary) */
+    --font-sans: 'Roboto', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+    --font-serif: 'Libre Caslon Text', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+    --font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+    /* Softer shadows (more “enterprise SaaS”) */
+    --shadow-2xs: 0 1px 2px 0px hsl(222 47% 11% / 0.04);
+    --shadow-xs: 0 1px 3px 0px hsl(222 47% 11% / 0.06);
+    --shadow-sm: 0 1px 3px 0px hsl(222 47% 11% / 0.08), 0 1px 2px -1px hsl(222 47% 11% / 0.08);
+    --shadow: 0 1px 4px 0px hsl(222 47% 11% / 0.08), 0 2px 3px -2px hsl(222 47% 11% / 0.08);
+    --shadow-md: 0 6px 16px -6px hsl(222 47% 11% / 0.12);
+    --shadow-lg: 0 14px 34px -14px hsl(222 47% 11% / 0.16);
+    --shadow-xl: 0 22px 50px -20px hsl(222 47% 11% / 0.18);
+    --shadow-2xl: 0 30px 70px -30px hsl(222 47% 11% / 0.22);
+
+    --tracking-normal: 0em;
+    --spacing: 0.25rem;
+  }
+
+  .dark {
+    /* Dark mode: deep navy background */
+    --background: 222 47% 8%;
+    --foreground: 0 0% 98%;
+
+    --card: 222 47% 10%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 222 47% 10%;
+    --popover-foreground: 0 0% 98%;
+
+    /* Keep amber primary */
+    --primary: 45 96% 50%;
+    --primary-foreground: 222 47% 11%;
+
+    /* Secondary flips to light */
+    --secondary: 0 0% 98%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 222 30% 14%;
+    --muted-foreground: 215 20% 70%;
+
+    --accent: 222 30% 14%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 222 25% 18%;
+    --input: 222 25% 18%;
+    --ring: 45 96% 50%;
+
+    --sidebar-background: 222 47% 10%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 45 96% 50%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 222 30% 14%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 222 25% 18%;
+    --sidebar-ring: 45 96% 50%;
+    --sidebar: 222 47% 10%;
+
+    --chart-1: 45 96% 50%;
+    --chart-2: 0 0% 98%;
+    --chart-3: 215 20% 70%;
+    --chart-4: 222 30% 14%;
+    --chart-5: 28 90% 55%;
+
+    /* keep your shadow definitions or reuse the same */
+    --shadow-2xs: 0 1px 2px 0px hsl(0 0% 0% / 0.20);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.30), 0 1px 2px -1px hsl(0 0% 0% / 0.30);
+    --shadow: 0 1px 4px 0px hsl(0 0% 0% / 0.30), 0 2px 3px -2px hsl(0 0% 0% / 0.30);
+    --shadow-md: 0 8px 18px -8px hsl(0 0% 0% / 0.45);
+    --shadow-lg: 0 16px 36px -16px hsl(0 0% 0% / 0.55);
+    --shadow-xl: 0 22px 50px -22px hsl(0 0% 0% / 0.60);
+    --shadow-2xl: 0 30px 70px -30px hsl(0 0% 0% / 0.65);
+  }
 }
+
 
 @layer base {
   * {

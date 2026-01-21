@@ -1,76 +1,208 @@
+// import { Toaster } from "@/components/ui/toaster";
+// import { Toaster as Sonner } from "@/components/ui/sonner";
+// import { TooltipProvider } from "@/components/ui/tooltip";
+// import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+// import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+// import { AuthProvider } from "@/contexts/AuthContext";
+// import { ThemeProvider } from "@/contexts/ThemeContext";
+// import { ProtectedRoute } from "@/components/ProtectedRoute";
+// import { AppLayout } from "@/components/layout/AppLayout";
+// import LoginPage from "@/pages/LoginPage";
+// import CEODashboard from "@/pages/ceo/CEODashboard";
+// import CEOFormBuilder from "@/pages/ceo/CEOFormBuilder";
+// import CEOViewReport from "@/pages/ceo/CEOViewReport";
+// import LeaderDashboard from "@/pages/leader/LeaderDashboard";
+// import LeaderSubmitReport from "@/pages/leader/LeaderSubmitReport";
+// import LeaderFormBuilder from "@/pages/leader/LeaderFormBuilder";
+// import LeaderViewMemberReport from "@/pages/leader/LeaderViewMemberReport";
+// import MemberDashboard from "@/pages/member/MemberDashboard";
+// import MemberSubmitReport from "@/pages/member/MemberSubmitReport";
+// import MemberViewReport from "@/pages/member/MemberViewReport";
+// import SettingsPage from "@/pages/SettingsPage";
+// import NotFound from "@/pages/NotFound";
+// import CompanyOKRs from "./pages/ceo/CompanyOKRs";
+// import TeamLeaderOKRs from "./pages/leader/TeamLeadersOKRs";
+// import SignupPage from "@/pages/SignupPage";
+// import SelectRolePage from "@/pages/SelectRolePage";
+// import JoinTeamPage from "@/pages/JoinTeamPage";
+
+
+// const queryClient = new QueryClient();
+
+// const App = () => (
+//   <QueryClientProvider client={queryClient}>
+//     <ThemeProvider>
+//       <AuthProvider>
+//         <TooltipProvider>
+//           <Toaster />
+//           <Sonner />
+//           <BrowserRouter>
+//             <Routes>
+//               <Route path="/login" element={<LoginPage />} />
+//               <Route path="/" element={<Navigate to="/login" replace />} />
+
+//               <Route path="/signup" element={<SignupPage />} />
+
+//               <Route element={<ProtectedRoute allowedRoles={['ceo', 'team_leader', 'team_member']}><AppLayout /></ProtectedRoute>}>
+//               <Route path="/settings" element={<SettingsPage />} />
+
+//               {/* onboarding */}
+//               <Route path="/select-role" element={<SelectRolePage />} />
+//               <Route path="/join-team" element={<JoinTeamPage />} />
+//               </Route>
+
+
+
+//               {/* CEO Routes */}
+//               <Route element={<ProtectedRoute allowedRoles={['ceo']}><AppLayout /></ProtectedRoute>}>
+//                 <Route path="/ceo" element={<CEODashboard />} />
+//                 <Route path="/ceo/form-builder" element={<CEOFormBuilder />} />
+//                 <Route path="/ceo/reports/:weekId/:leaderId" element={<CEOViewReport />} />
+//                 <Route path="/ceo/okrs" element={<CompanyOKRs />} />   {/* ✅ add this */}
+//               </Route>
+
+//               {/* Leader Routes */}
+//               <Route element={<ProtectedRoute allowedRoles={['team_leader']}><AppLayout /></ProtectedRoute>}>
+//                 <Route path="/leader" element={<LeaderDashboard />} />
+//                 <Route path="/leader/submit" element={<LeaderSubmitReport />} />
+//                 <Route path="/leader/form-builder" element={<LeaderFormBuilder />} />
+//                 <Route path="/leader/reports/:weekId/:memberId" element={<LeaderViewMemberReport />} />
+//                 <Route path="/leader/okrs" element={<TeamLeaderOKRs />} />
+
+//               </Route>
+
+//               {/* Member Routes */}
+//               <Route element={<ProtectedRoute allowedRoles={['team_member']}><AppLayout /></ProtectedRoute>}>
+//                 <Route path="/member" element={<MemberDashboard />} />
+//                 <Route path="/member/submit" element={<MemberSubmitReport />} />
+//                 <Route path="/member/reports/:weekId" element={<MemberViewReport />} />
+//               </Route>
+
+//               {/* Shared Routes */}
+//               <Route element={<ProtectedRoute allowedRoles={['ceo', 'team_leader', 'team_member']}><AppLayout /></ProtectedRoute>}>
+//                 <Route path="/settings" element={<SettingsPage />} />
+//               </Route>
+
+//               <Route path="*" element={<NotFound />} />
+//             </Routes>
+//           </BrowserRouter>
+//         </TooltipProvider>
+//       </AuthProvider>
+//     </ThemeProvider>
+//   </QueryClientProvider>
+// );
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
+
 import LoginPage from "@/pages/LoginPage";
+import SignupPage from "@/pages/SignupPage";
+import SelectRolePage from "@/pages/SelectRolePage";
+import JoinTeamPage from "@/pages/JoinTeamPage";
+
 import CEODashboard from "@/pages/ceo/CEODashboard";
 import CEOFormBuilder from "@/pages/ceo/CEOFormBuilder";
 import CEOViewReport from "@/pages/ceo/CEOViewReport";
+import CompanyOKRs from "@/pages/ceo/CompanyOKRs";
+
 import LeaderDashboard from "@/pages/leader/LeaderDashboard";
 import LeaderSubmitReport from "@/pages/leader/LeaderSubmitReport";
 import LeaderFormBuilder from "@/pages/leader/LeaderFormBuilder";
 import LeaderViewMemberReport from "@/pages/leader/LeaderViewMemberReport";
+import TeamLeaderOKRs from "@/pages/leader/TeamLeadersOKRs";
+
 import MemberDashboard from "@/pages/member/MemberDashboard";
 import MemberSubmitReport from "@/pages/member/MemberSubmitReport";
 import MemberViewReport from "@/pages/member/MemberViewReport";
+
 import SettingsPage from "@/pages/SettingsPage";
 import NotFound from "@/pages/NotFound";
-import CompanyOKRs from "./pages/ceo/CompanyOKRs";
-import TeamLeaderOKRs from "./pages/leader/TeamLeadersOKRs";
+
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<Navigate to="/login" replace />} />
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
 
-              {/* CEO Routes */}
-              <Route element={<ProtectedRoute allowedRoles={['ceo']}><AppLayout /></ProtectedRoute>}>
+        <BrowserRouter>
+          <AuthProvider>
+            <Routes>
+              {/* Public */}
+              <Route path="/" element={<Navigate to="/login" replace />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+
+              {/* ✅ Onboarding (logged-in only, NO role restriction) */}
+              <Route
+  element={
+    <ProtectedRoute>
+      <AppLayout />
+    </ProtectedRoute>
+  }
+>
+  <Route path="/select-role" element={<SelectRolePage />} />
+  <Route path="/join-team" element={<JoinTeamPage />} />
+  <Route path="/settings" element={<SettingsPage />} />
+</Route>
+
+              {/* CEO */}
+              <Route
+                element={
+                  <ProtectedRoute allowedRoles={["ceo"]}>
+                    <AppLayout />
+                  </ProtectedRoute>
+                }
+              >
                 <Route path="/ceo" element={<CEODashboard />} />
                 <Route path="/ceo/form-builder" element={<CEOFormBuilder />} />
                 <Route path="/ceo/reports/:weekId/:leaderId" element={<CEOViewReport />} />
-                <Route path="/ceo/okrs" element={<CompanyOKRs />} />   {/* ✅ add this */}
+                <Route path="/ceo/okrs" element={<CompanyOKRs />} />
               </Route>
 
-              {/* Leader Routes */}
-              <Route element={<ProtectedRoute allowedRoles={['team_leader']}><AppLayout /></ProtectedRoute>}>
+              {/* Leader */}
+              <Route
+                element={
+                  <ProtectedRoute allowedRoles={["team_leader"]}>
+                    <AppLayout />
+                  </ProtectedRoute>
+                }
+              >
                 <Route path="/leader" element={<LeaderDashboard />} />
                 <Route path="/leader/submit" element={<LeaderSubmitReport />} />
                 <Route path="/leader/form-builder" element={<LeaderFormBuilder />} />
                 <Route path="/leader/reports/:weekId/:memberId" element={<LeaderViewMemberReport />} />
                 <Route path="/leader/okrs" element={<TeamLeaderOKRs />} />
-
               </Route>
 
-              {/* Member Routes */}
-              <Route element={<ProtectedRoute allowedRoles={['team_member']}><AppLayout /></ProtectedRoute>}>
+              {/* Member */}
+              <Route
+                element={
+                  <ProtectedRoute allowedRoles={["team_member"]}>
+                    <AppLayout />
+                  </ProtectedRoute>
+                }
+              >
                 <Route path="/member" element={<MemberDashboard />} />
                 <Route path="/member/submit" element={<MemberSubmitReport />} />
                 <Route path="/member/reports/:weekId" element={<MemberViewReport />} />
               </Route>
 
-              {/* Shared Routes */}
-              <Route element={<ProtectedRoute allowedRoles={['ceo', 'team_leader', 'team_member']}><AppLayout /></ProtectedRoute>}>
-                <Route path="/settings" element={<SettingsPage />} />
-              </Route>
-
+              {/* Fallback */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
     </ThemeProvider>
   </QueryClientProvider>
 );

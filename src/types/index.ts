@@ -1,5 +1,5 @@
 // User roles
-export type UserRole = 'ceo' | 'team_leader' | 'team_member';
+export type UserRole = 'ceo' | 'team_leader' | 'team_member' | null;
 
 // Report status
 export type ReportStatus = 'draft' | 'submitted';
@@ -11,14 +11,31 @@ export type ReportType = 'leader' | 'member';
 export type FieldType = 'text' | 'textarea' | 'number' | 'select' | 'checkbox';
 
 // User interface
+// export interface User {
+//   id: string;
+//   name: string;
+//   email: string;
+//   role: UserRole;
+//   teamId?: string;
+//   avatarUrl?: string;
+// }
+
 export interface User {
   id: string;
   name: string;
   email: string;
   role: UserRole;
-  teamId?: string;
+
+  email_verified?: boolean;
+  status?: 'pending' | 'active' | 'disabled' | string;
+  role_locked?: boolean;
+
+  team?: { id: string; name: string; leader_id?: string | null } | null;
+  teamId?: string | null;
+
   avatarUrl?: string;
 }
+
 
 // Team interface
 export interface Team {
@@ -110,12 +127,22 @@ export type LoginResult =
   | { success: false; error: string };
 
 // Auth context type
+// export interface AuthContextType {
+//   user: User | null;
+//   isLoading: boolean;a
+//   login: (email: string, password: string) => Promise<LoginResult>;
+//   logout: () => void;
+// }
+// Auth context type
 export interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  refreshMe: () => Promise<User | null>;
+  signup: (name: string, email: string, password: string) => Promise<{ success: true }>;
 }
+
 
 
 // Theme type

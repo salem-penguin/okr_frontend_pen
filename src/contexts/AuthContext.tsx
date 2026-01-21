@@ -139,9 +139,97 @@
 //   }
 //   return context;
 // }
+
+//################################################################################################################
+
+//################################################################################################################
+
+//################################################################################################################
+// import React, { createContext, useContext, useEffect, useCallback, useState } from "react";
+// import type { User, AuthContextType, LoginResult } from "@/types";
+// import { apiFetch } from "@/api/client";
+
+// const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// // Normalize backend /me shape to your UI User shape
+// function normalizeUser(apiUser: any): User {
+//   return {
+//     ...apiUser,
+//     teamId: apiUser?.team?.id ?? null,
+//   };
+// }
+
+// export function AuthProvider({ children }: { children: React.ReactNode }) {
+//   const [user, setUser] = useState<User | null>(null);
+//   const [isLoading, setIsLoading] = useState(true);
+
+//   // On mount: try /me. If cookie exists -> logged in, else -> logged out.
+//   useEffect(() => {
+//     const checkAuth = async () => {
+//       try {
+//         const meRaw = await apiFetch<any>("/me");
+//         setUser(normalizeUser(meRaw));
+//       } catch {
+//         setUser(null);
+//       } finally {
+//         setIsLoading(false);
+//       }
+//     };
+
+//     checkAuth();
+//   }, []);
+
+//   const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
+//     try {
+//       // IMPORTANT: this must be POST
+//       await apiFetch("/auth/login", {
+//         method: "POST",
+//         body: JSON.stringify({ email, password }),
+//       });
+
+//       const meRaw = await apiFetch<any>("/me");
+//       const currentUser = normalizeUser(meRaw);
+
+//       setUser(currentUser);
+//       return { success: true, user: currentUser };
+//     } catch (error: any) {
+//       const msg = typeof error?.message === "string" ? error.message : "Login failed";
+//       setUser(null);
+//       return { success: false, error: msg };
+//     }
+//   }, []);
+
+//   const logout = useCallback(async () => {
+//     try {
+//       await apiFetch("/auth/logout", { method: "POST" });
+//     } catch {
+//       // ignore
+//     } finally {
+//       setUser(null);
+//     }
+//   }, []);
+
+//   const value: AuthContextType = { user, isLoading, login, logout };
+
+//   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+// }
+
+// export function useAuth() {
+//   const context = useContext(AuthContext);
+//   if (!context) throw new Error("useAuth must be used within an AuthProvider");
+//   return context;
+// }
+
+//################################################################################################################
+//################################################################################################################
+//################################################################################################################
+//################################################################################################################
+
+// src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useEffect, useCallback, useState } from "react";
 import type { User, AuthContextType, LoginResult } from "@/types";
 import { apiFetch } from "@/api/client";
+import { useLocation } from "react-router-dom";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -149,6 +237,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 function normalizeUser(apiUser: any): User {
   return {
     ...apiUser,
+    // backend returns team: {id, name, leader_id} | null
     teamId: apiUser?.team?.id ?? null,
   };
 }
@@ -156,41 +245,60 @@ function normalizeUser(apiUser: any): User {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const location = useLocation();
 
-  // On mount: try /me. If cookie exists -> logged in, else -> logged out.
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const meRaw = await apiFetch<any>("/me");
-        setUser(normalizeUser(meRaw));
-      } catch {
-        setUser(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, []);
-
-  const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
+  const refreshMe = useCallback(async (): Promise<User | null> => {
     try {
-      // IMPORTANT: this must be POST
-      await apiFetch("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      });
-
       const meRaw = await apiFetch<any>("/me");
       const currentUser = normalizeUser(meRaw);
-
       setUser(currentUser);
-      return { success: true, user: currentUser };
-    } catch (error: any) {
-      const msg = typeof error?.message === "string" ? error.message : "Login failed";
+      return currentUser;
+    } catch {
       setUser(null);
-      return { success: false, error: msg };
+      return null;
     }
+  }, []);
+
+  // On route change: skip /me on public pages to avoid 401 noise
+  useEffect(() => {
+    const publicPaths = ["/login", "/signup"];
+    if (publicPaths.includes(location.pathname)) {
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    refreshMe().finally(() => setIsLoading(false));
+  }, [location.pathname, refreshMe]);
+
+  const login = useCallback(
+    async (email: string, password: string): Promise<LoginResult> => {
+      try {
+        await apiFetch("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+
+        const currentUser = await refreshMe();
+        if (!currentUser) return { success: false, error: "Login failed" };
+
+        return { success: true, user: currentUser };
+      } catch (error: any) {
+        const msg = typeof error?.message === "string" ? error.message : "Login failed";
+        setUser(null);
+        return { success: false, error: msg };
+      }
+    },
+    [refreshMe]
+  );
+
+  const signup = useCallback(async (name: string, email: string, password: string) => {
+    await apiFetch("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ name, email, password }),
+    });
+    return { success: true as const };
   }, []);
 
   const logout = useCallback(async () => {
@@ -203,7 +311,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const value: AuthContextType = { user, isLoading, login, logout };
+  const value: AuthContextType = {
+    user,
+    isLoading,
+    login,
+    logout,
+    refreshMe,
+    signup,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
