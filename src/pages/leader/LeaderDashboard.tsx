@@ -159,6 +159,10 @@ type TeamMembersResponse = {
   items: Array<{ id: string; name: string; email: string; role: string }>;
   count: number;
 };
+type WeeksListResponse = {
+  items: CurrentWeekResponse[];
+  count: number;
+};
 
 // --------------------
 // Helpers
@@ -198,26 +202,63 @@ export default function LeaderDashboard() {
   const userEmail = user?.email;
 
   // Boot: load current week from API and set selector state
-  useEffect(() => {
-    const boot = async () => {
-      if (!userEmail) return;
+  // useEffect(() => {
+  //   const boot = async () => {
+  //     if (!userEmail) return;
 
-      setIsLoading(true);
+  //     setIsLoading(true);
+  //     try {
+  //       const cw = await apiFetch<CurrentWeekResponse>('/weeks/current');
+  //       const currentWeek = toWeek(cw);
+
+  //       setSelectedWeek(currentWeek);
+
+  //       // Until you implement GET /weeks?limit=12, keep selector showing only current week.
+  //       setWeeks([currentWeek]);
+  //     } finally {
+  //       setIsLoading(false);
+  //     }
+  //   };
+
+  //   boot();
+  // }, [userEmail]);
+  useEffect(() => {
+  const boot = async () => {
+    if (!userEmail) return;
+
+    setIsLoading(true);
+    try {
+      // 1) Load last 12 weeks (backend: GET /weeks?limit=12)
+      const weeksRes = await apiFetch<WeeksListResponse>('/weeks?limit=12');
+      const weekObjects = (weeksRes.items ?? []).map(toWeek);
+
+      // 2) Load current week (backend: GET /weeks/current)
+      const cw = await apiFetch<CurrentWeekResponse>('/weeks/current');
+      const currentWeek = toWeek(cw);
+
+      // 3) Default selection: prefer current week if included, otherwise first week
+      const found = weekObjects.find((w) => w.isoWeekId === currentWeek.isoWeekId);
+      const selected = found ?? weekObjects[0] ?? currentWeek;
+
+      setWeeks(weekObjects.length ? weekObjects : [currentWeek]);
+      setSelectedWeek(selected);
+    } catch (e) {
+      console.error('Failed to boot weeks:', e);
+      // fallback: at least try current week
       try {
         const cw = await apiFetch<CurrentWeekResponse>('/weeks/current');
         const currentWeek = toWeek(cw);
-
-        setSelectedWeek(currentWeek);
-
-        // Until you implement GET /weeks?limit=12, keep selector showing only current week.
         setWeeks([currentWeek]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+        setSelectedWeek(currentWeek);
+      } catch {}
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    boot();
-  }, [userEmail]);
+  boot();
+}, [userEmail]);
+
 
   // Load dashboard data whenever week changes
   // useEffect(() => {

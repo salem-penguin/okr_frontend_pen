@@ -138,7 +138,10 @@ type ReportsListResponse = {
   items: ReportsListItem[];
   count: number;
 };
-
+type WeeksListResponse = {
+  items: CurrentWeekResponse[];
+  count: number;
+};
 // --------------------
 // Helpers
 // --------------------
@@ -178,13 +181,21 @@ export default function CEODashboard() {
 
       setIsLoading(true);
       try {
+        const weeksRes = await apiFetch<WeeksListResponse>('/weeks?limit=12');
+        const weekObjects = (weeksRes.items ?? []).map(toWeek);
+
+
+
+
+
         const cw = await apiFetch<CurrentWeekResponse>('/weeks/current');
         const currentWeek = toWeek(cw);
 
-        setSelectedWeek(currentWeek);
+        const found = weekObjects.find(w => w.isoWeekId === currentWeek.isoWeekId);
+        const selected = found ?? weekObjects[0] ?? currentWeek;
 
-        // Until you implement GET /weeks?limit=12, keep selector showing only current week.
-        setWeeks([currentWeek]);
+        setWeeks(weekObjects.length ? weekObjects : [currentWeek]);
+        setSelectedWeek(selected);
       } finally {
         setIsLoading(false);
       }
