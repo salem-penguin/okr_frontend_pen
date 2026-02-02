@@ -21,12 +21,19 @@ import { ChevronUp, ChevronDown, RefreshCw, Save } from "lucide-react";
 // Types
 // --------------------
 type KRStatus = "not_started" | "in_progress" | "completed";
+type ObjectiveTimeline = {
+  timeline_start: string; // ISO date
+  timeline_end: string;   // ISO date
+  is_expired: boolean;
+  days_remaining: number;
+};
 
 type KR = {
   id: string;
   title: string;
   status: KRStatus;
   progress: number;
+  weight: number;
 };
 
 type Objective = {
@@ -34,6 +41,7 @@ type Objective = {
   title: string;
   progress: number;
   key_results: KR[];
+  timeline?: ObjectiveTimeline; 
 };
 
 type TeamOKRsResponse = {
@@ -321,6 +329,30 @@ export default function TeamLeaderOKRs() {
                         />
                       </div>
                     </div>
+                    {/* ✅ Objective Timeline (read-only) */}
+    <div className="rounded-md border border-border p-3 space-y-2">
+      <div className="text-sm font-medium">Objective Timeline</div>
+
+      {obj.timeline ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">
+            {obj.timeline.timeline_start.slice(0, 10)} → {obj.timeline.timeline_end.slice(0, 10)}
+          </span>
+
+          <span className="text-muted-foreground">
+            • Days remaining: <span className="font-medium">{obj.timeline.days_remaining}</span>
+          </span>
+
+          {obj.timeline.is_expired ? (
+            <span className="rounded-md border px-2 py-1 text-xs text-red-600">Expired</span>
+          ) : (
+            <span className="rounded-md border px-2 py-1 text-xs text-emerald-600">Active</span>
+          )}
+        </div>
+      ) : (
+        <span className="text-sm text-muted-foreground">Timeline not available.</span>
+      )}
+    </div>
 
                     {/* Key Results */}
                     <div className="space-y-2">
@@ -346,10 +378,11 @@ export default function TeamLeaderOKRs() {
                               >
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                   <div className="space-y-1">
-                                    <div className="text-sm font-semibold">{kr.title}</div>
-                                    <div className={`text-xs ${s.cls}`}>
-                                      {s.text} • {clampProgress(edit.progress)}%
-                                    </div>
+                                      <div className="text-sm font-semibold">{kr.title}</div>
+
+  <div className={`text-xs ${s.cls}`}>
+    {s.text} • {clampProgress(edit.progress)}% • Weight: {kr.weight ?? 1}
+  </div>
                                   </div>
 
                                   <Button
