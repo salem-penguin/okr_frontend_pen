@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/shared/LoadingState";
 import { EmptyState } from "@/components/shared/EmptyState";
 
-import { ChevronUp, ChevronDown, Plus, RefreshCw } from "lucide-react";
+import { ChevronUp, ChevronDown, Plus, RefreshCw, Save } from "lucide-react";
 
 // --------------------
 // Types
@@ -28,12 +28,12 @@ type KR = {
   title: string;
   status: KRStatus;
   progress: number;
-  weight: number; // NEW
+  weight: number;
 };
 
 type ObjectiveTimeline = {
-  timeline_start: string; // ISO date
-  timeline_end: string; // ISO date
+  timeline_start: string;
+  timeline_end: string;
   is_expired: boolean;
   days_remaining: number;
   needs_extension_prompt: boolean;
@@ -43,6 +43,11 @@ type Objective = {
   id: string;
   title: string;
   progress: number;
+
+  // ✅ for child objectives
+  parent_id?: string | null;
+  parent_weight?: number | null;
+
   key_results: KR[];
   timeline?: ObjectiveTimeline;
 };
@@ -65,6 +70,13 @@ type CurrentOKRsResponse = {
 
 type TeamOption = { id: string; name: string };
 type TeamsResponse = { items: TeamOption[]; count: number };
+
+// Company-level objectives (parent)
+type CompanyLevelObjectiveOption = { id: string; title: string };
+type CompanyLevelObjectivesResponse = {
+  items: CompanyLevelObjectiveOption[];
+  count: number;
+};
 
 // --------------------
 // Helpers
@@ -90,7 +102,6 @@ function safeArray<T>(x: T[] | undefined | null): T[] {
 // ISO date -> yyyy-mm-dd (for <input type="date">)
 function toDateInputValue(iso?: string) {
   if (!iso) return "";
-  // Expect "YYYY-MM-DD" or "YYYY-MM-DDTHH..."
   return iso.slice(0, 10);
 }
 
@@ -100,23 +111,40 @@ export default function CompanyOKRs() {
 
   const [data, setData] = useState<CurrentOKRsResponse | null>(null);
   const [teamsOptions, setTeamsOptions] = useState<TeamOption[]>([]);
+  const [companyLevelOptions, setCompanyLevelOptions] = useState<CompanyLevelObjectiveOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // collapse per team
   const [openTeams, setOpenTeams] = useState<Record<string, boolean>>({});
 
-  // Add objective
+  // Add objective (company-level OR team-level)
   const [newObjectiveTitle, setNewObjectiveTitle] = useState("");
-  const [selectedTeamId, setSelectedTeamId] = useState<string>(""); // "" => unassigned
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(""); // "" => company-level parent
+  const [selectedParentId, setSelectedParentId] = useState<string>(""); // required when team selected
+  const [parentWeight, setParentWeight] = useState<number>(10); // default
 
   // Add KR (inline per objective)
   const [krDraftByObjective, setKrDraftByObjective] = useState<Record<string, string>>({});
-  const [krWeightByObjective, setKrWeightByObjective] = useState<Record<string, number>>({}); // NEW
+  const [krWeightByObjective, setKrWeightByObjective] = useState<Record<string, number>>({});
   const [isSaving, setIsSaving] = useState(false);
 
   // Timeline edit drafts per objective
   const [tlDraftByObj, setTlDraftByObj] = useState<Record<string, { start: string; end: string }>>({});
   const [isSavingTimelineByObj, setIsSavingTimelineByObj] = useState<Record<string, boolean>>({});
+
+  // ✅ CEO edits: objective parent weight drafts
+  const [parentWeightDraftByObj, setParentWeightDraftByObj] = useState<Record<string, number>>({});
+  const [isSavingParentWeightByObj, setIsSavingParentWeightByObj] = useState<Record<string, boolean>>({});
+
+  // ✅ CEO edits: KR weight drafts (per KR)
+  const [krWeightDraftById, setKrWeightDraftById] = useState<Record<string, number>>({});
+  const [isSavingKrWeightById, setIsSavingKrWeightById] = useState<Record<string, boolean>>({});
+
+  const parentTitleById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of companyLevelOptions) m[p.id] = p.title;
+    return m;
+  }, [companyLevelOptions]);
 
   const remaining = useMemo(
     () => formatDuration(data?.quarter.seconds_remaining ?? 0),
@@ -132,8 +160,10 @@ export default function CompanyOKRs() {
         quarter: res.quarter,
         teams: safeArray(res.teams).map((t) => ({
           ...t,
-          objectives: safeArray(t.objectives).map((o) => ({
+          objectives: safeArray(t.objectives).map((o: any) => ({
             ...o,
+            parent_id: o?.parent_id ?? o?.parent_company_level_objective_id ?? null,
+            parent_weight: o?.parent_weight ?? 0,
             key_results: safeArray(o.key_results).map((kr: any) => ({
               ...kr,
               progress: kr?.progress ?? 0,
@@ -166,7 +196,6 @@ export default function CompanyOKRs() {
                 end: toDateInputValue(obj.timeline?.timeline_end),
               };
             } else {
-              // keep user's edits if already present
               if (!next[obj.id].start) next[obj.id].start = toDateInputValue(obj.timeline?.timeline_start);
               if (!next[obj.id].end) next[obj.id].end = toDateInputValue(obj.timeline?.timeline_end);
             }
@@ -175,7 +204,7 @@ export default function CompanyOKRs() {
         return next;
       });
 
-      // init KR weight drafts (default 1 per objective if missing)
+      // init KR add-weight drafts per objective
       setKrWeightByObjective((prev) => {
         const next = { ...prev };
         for (const team of normalized.teams) {
@@ -185,6 +214,33 @@ export default function CompanyOKRs() {
         }
         return next;
       });
+
+      // ✅ init objective parent weight drafts from server
+      setParentWeightDraftByObj((prev) => {
+        const next = { ...prev };
+        for (const team of normalized.teams) {
+          for (const obj of safeArray(team.objectives)) {
+            const serverW = Number(obj.parent_weight ?? 0);
+            if (typeof next[obj.id] !== "number") next[obj.id] = serverW;
+          }
+        }
+        return next;
+      });
+
+      // ✅ init KR weight drafts from server (per KR id)
+      setKrWeightDraftById((prev) => {
+        const next = { ...prev };
+        for (const team of normalized.teams) {
+          for (const obj of safeArray(team.objectives)) {
+            for (const kr of safeArray(obj.key_results)) {
+              const serverW = Number(kr.weight ?? 1);
+              if (typeof next[kr.id] !== "number") next[kr.id] = serverW;
+            }
+          }
+        }
+        return next;
+      });
+
     } catch (e) {
       console.error(e);
       toast.error("Failed to load OKRs");
@@ -205,15 +261,29 @@ export default function CompanyOKRs() {
     }
   };
 
+  const loadCompanyLevel = async () => {
+    try {
+      const res = await apiFetch<CompanyLevelObjectivesResponse>("/okrs/company/level-objectives");
+      setCompanyLevelOptions(safeArray(res.items));
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load company-level OKRs");
+      setCompanyLevelOptions([]);
+    }
+  };
+
   // Load OKRs once
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load teams options whenever we know user is CEO
+  // Load teams & company-level whenever we know user is CEO
   useEffect(() => {
-    if (isCEO) loadTeams();
+    if (isCEO) {
+      loadTeams();
+      loadCompanyLevel();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCEO]);
 
@@ -241,23 +311,57 @@ export default function CompanyOKRs() {
     const title = newObjectiveTitle.trim();
     if (!title) return toast.error("Objective title is required");
 
+    // Mode A: company-level parent (when team is not selected)
+    if (!selectedTeamId) {
+      setIsSaving(true);
+      try {
+        await apiFetch("/okrs/company/level-objectives", {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        });
+
+        setNewObjectiveTitle("");
+        toast.success("Company-level objective added");
+
+        await loadCompanyLevel();
+        await load();
+      } catch (e) {
+        console.error(e);
+        toast.error("Failed to add company-level objective");
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
+    // Mode B: team-level child (requires parent + weight)
+    if (!selectedParentId) return toast.error("Parent company-level OKR is required");
+
+    const w = Number(parentWeight);
+    if (!Number.isFinite(w) || w < 1 || w > 100) return toast.error("Parent weight must be between 1 and 100");
+
     setIsSaving(true);
     try {
       await apiFetch("/okrs/company/objectives", {
         method: "POST",
         body: JSON.stringify({
           title,
-          team_id: selectedTeamId ? selectedTeamId : null,
+          team_id: selectedTeamId,
+          parent_id: selectedParentId,
+          parent_weight: w,
         }),
       });
 
       setNewObjectiveTitle("");
       setSelectedTeamId("");
-      toast.success("Objective added");
+      setSelectedParentId("");
+      setParentWeight(10);
+
+      toast.success("Team objective added");
       await load();
     } catch (e) {
       console.error(e);
-      toast.error("Failed to add objective");
+      toast.error("Failed to add team objective");
     } finally {
       setIsSaving(false);
     }
@@ -323,6 +427,52 @@ export default function CompanyOKRs() {
     }
   };
 
+  // ✅ CEO: save objective parent weight (child objective weight under parent)
+  const saveObjectiveParentWeight = async (objectiveId: string, weight: number) => {
+    if (!isCEO) return;
+
+    const w = Number(weight);
+    if (!Number.isFinite(w) || w < 1 || w > 100) return toast.error("Parent weight must be between 1 and 100");
+
+    setIsSavingParentWeightByObj((p) => ({ ...p, [objectiveId]: true }));
+    try {
+      await apiFetch("/okrs/company/objectives/parent-weight", {
+        method: "PATCH",
+        body: JSON.stringify({ objective_id: objectiveId, parent_weight: w }),
+      });
+      toast.success("Parent weight updated");
+      await load();
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to update parent weight");
+    } finally {
+      setIsSavingParentWeightByObj((p) => ({ ...p, [objectiveId]: false }));
+    }
+  };
+
+  // ✅ CEO: save KR weight
+  const saveKRWeight = async (krId: string, weight: number) => {
+    if (!isCEO) return;
+
+    const w = Number(weight);
+    if (!Number.isFinite(w) || w < 1 || w > 100) return toast.error("KR weight must be between 1 and 100");
+
+    setIsSavingKrWeightById((p) => ({ ...p, [krId]: true }));
+    try {
+      await apiFetch("/okrs/company/key-results/weight", {
+        method: "PATCH",
+        body: JSON.stringify({ id: krId, weight: w }),
+      });
+      toast.success("KR weight updated");
+      await load();
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to update KR weight");
+    } finally {
+      setIsSavingKrWeightById((p) => ({ ...p, [krId]: false }));
+    }
+  };
+
   if (!isCEO) {
     return (
       <div className="p-6">
@@ -342,6 +492,7 @@ export default function CompanyOKRs() {
   }
 
   const teams = safeArray(data.teams);
+  const hasParents = companyLevelOptions.length > 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -366,12 +517,13 @@ export default function CompanyOKRs() {
         <CardHeader>
           <CardTitle>Add new Objective</CardTitle>
           <CardDescription>
-            Assign each objective to a team. Progress and status will be updated by the assigned team.
+            Create Company-level OKRs (parents) or Team OKRs (children). Team objectives contribute to a parent via weight.
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="grid gap-3 sm:grid-cols-3">
-          <div className="sm:col-span-2">
+        <CardContent className="grid gap-3 sm:grid-cols-6">
+          {/* Title */}
+          <div className="sm:col-span-3">
             <Input
               value={newObjectiveTitle}
               onChange={(e) => setNewObjectiveTitle(e.target.value)}
@@ -379,13 +531,23 @@ export default function CompanyOKRs() {
             />
           </div>
 
-          <div className="sm:col-span-1">
+          {/* Team */}
+          <div className="sm:col-span-3">
             <select
               className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
               value={selectedTeamId}
-              onChange={(e) => setSelectedTeamId(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSelectedTeamId(v);
+
+                if (v) {
+                  setSelectedParentId((prev) => prev || (companyLevelOptions[0]?.id ?? ""));
+                } else {
+                  setSelectedParentId("");
+                }
+              }}
             >
-              <option value="">Unassigned (Company-level)</option>
+              <option value="">Company-level (Parent OKR)</option>
               {teamsOptions.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -394,10 +556,62 @@ export default function CompanyOKRs() {
             </select>
           </div>
 
-          <div className="sm:col-span-3">
-            <Button onClick={addObjective} disabled={isSaving}>
+          {/* Parent + weight (team mode only) */}
+          {selectedTeamId ? (
+            <>
+              {!hasParents ? (
+                <div className="sm:col-span-6 text-sm text-amber-600">
+                  You must create at least one Company-level OKR first.
+                </div>
+              ) : (
+                <>
+                  <div className="sm:col-span-4">
+                    <select
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+                      value={selectedParentId}
+                      onChange={(e) => setSelectedParentId(e.target.value)}
+                    >
+                      <option value="" disabled>
+                        Select parent company-level OKR...
+                      </option>
+                      {companyLevelOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      This team objective will be linked as a child of the selected company-level OKR.
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={parentWeight}
+                      onChange={(e) => setParentWeight(Number(e.target.value || 1))}
+                      placeholder="Parent weight (1-100)"
+                    />
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Weight of this team objective under the parent (children total ≤ 100).
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <div className="sm:col-span-6 text-xs text-muted-foreground">
+              Creating a company-level OKR (parent). Teams’ OKRs will be linked to this later.
+            </div>
+          )}
+
+          {/* Button */}
+          <div className="sm:col-span-6">
+            <Button onClick={addObjective} disabled={isSaving || (selectedTeamId ? !hasParents : false)}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Objective
+              {selectedTeamId ? "Add Team Objective" : "Add Company-level Objective"}
             </Button>
           </div>
         </CardContent>
@@ -440,17 +654,67 @@ export default function CompanyOKRs() {
                         const draft = tlDraftByObj[obj.id] || { start: "", end: "" };
                         const isSavingTl = !!isSavingTimelineByObj[obj.id];
 
-                        // Optional: disable Save if nothing changed (compared to server)
                         const serverStart = toDateInputValue(tl?.timeline_start);
                         const serverEnd = toDateInputValue(tl?.timeline_end);
-                        const isTlDirty =
-                          draft.start !== (serverStart || "") || draft.end !== (serverEnd || "");
+                        const isTlDirty = draft.start !== (serverStart || "") || draft.end !== (serverEnd || "");
+
+                        const serverParentWeight = Number(obj.parent_weight ?? 0);
+                        const draftParentWeight = Number(parentWeightDraftByObj[obj.id] ?? serverParentWeight);
+                        const isChild = !!obj.parent_id;
+                        const isSavingPW = !!isSavingParentWeightByObj[obj.id];
+                        const isParentWeightDirty = isChild && draftParentWeight !== serverParentWeight;
+
+                        const parentTitle = obj.parent_id ? parentTitleById[obj.parent_id] : "";
 
                         return (
                           <div key={obj.id} className="space-y-3 rounded-lg border border-border p-4">
                             {/* Objective header */}
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                              <div className="font-semibold">{obj.title}</div>
+                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                              <div className="space-y-1">
+                                <div className="font-semibold">{obj.title}</div>
+
+                                {/* ✅ Parent link + editable parent weight */}
+                                {isChild ? (
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <div className="text-xs text-muted-foreground">
+                                      Parent: <span className="font-medium">{parentTitle || obj.parent_id}</span>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-xs text-muted-foreground">Objective Weight:</div>
+
+                                      <Input
+                                        className="h-8 w-24"
+                                        type="number"
+                                        min={1}
+                                        max={100}
+                                        value={draftParentWeight}
+                                        onChange={(e) =>
+                                          setParentWeightDraftByObj((p) => ({
+                                            ...p,
+                                            [obj.id]: Number(e.target.value || 1),
+                                          }))
+                                        }
+                                      />
+
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={!isParentWeightDirty || isSavingPW || isSaving}
+                                        onClick={() => saveObjectiveParentWeight(obj.id, draftParentWeight)}
+                                      >
+                                        <Save className="h-4 w-4 mr-2" />
+                                        Save
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground">
+                                    {team.team_id ? "Team Objective" : "Company Objective"}
+                                  </div>
+                                )}
+                              </div>
+
                               <div className="text-sm text-muted-foreground">{obj.progress ?? 0}%</div>
                             </div>
 
@@ -488,10 +752,7 @@ export default function CompanyOKRs() {
                                 </div>
 
                                 <div className="flex items-end">
-                                  <Button
-                                    onClick={() => saveObjectiveTimeline(obj.id)}
-                                    disabled={!isTlDirty || isSavingTl || isSaving}
-                                  >
+                                  <Button onClick={() => saveObjectiveTimeline(obj.id)} disabled={!isTlDirty || isSavingTl || isSaving}>
                                     Save
                                   </Button>
                                 </div>
@@ -505,19 +766,13 @@ export default function CompanyOKRs() {
                                     </span>
 
                                     {tl.is_expired ? (
-                                      <span className="rounded-md border px-2 py-1 text-xs text-red-600">
-                                        Expired
-                                      </span>
+                                      <span className="rounded-md border px-2 py-1 text-xs text-red-600">Expired</span>
                                     ) : (
-                                      <span className="rounded-md border px-2 py-1 text-xs text-emerald-600">
-                                        Active
-                                      </span>
+                                      <span className="rounded-md border px-2 py-1 text-xs text-emerald-600">Active</span>
                                     )}
 
                                     {tl.needs_extension_prompt ? (
-                                      <span className="rounded-md border px-2 py-1 text-xs text-amber-600">
-                                        Extension recommended
-                                      </span>
+                                      <span className="rounded-md border px-2 py-1 text-xs text-amber-600">Extension recommended</span>
                                     ) : null}
                                   </div>
                                 ) : (
@@ -544,19 +799,56 @@ export default function CompanyOKRs() {
                                 <ul className="space-y-2">
                                   {safeArray(obj.key_results).map((kr) => {
                                     const s = statusLabel(kr.status);
+
+                                    const serverKRWeight = Number(kr.weight ?? 1);
+                                    const draftKRWeight = Number(krWeightDraftById[kr.id] ?? serverKRWeight);
+                                    const isSavingKrW = !!isSavingKrWeightById[kr.id];
+                                    const isKrWeightDirty = draftKRWeight !== serverKRWeight;
+
                                     return (
                                       <li
                                         key={kr.id}
-                                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-border p-3"
+                                        className="flex flex-col gap-3 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
                                       >
                                         <div className="flex flex-col gap-1">
                                           <div className="text-sm font-medium">{kr.title}</div>
                                           <div className={`text-xs ${s.cls}`}>
-                                            {s.text} • {kr.progress ?? 0}% • Weight: {kr.weight ?? 1}
+                                            {s.text} • {kr.progress ?? 0}%
                                           </div>
                                         </div>
 
-                                        <div className="text-xs text-muted-foreground">Updated by team</div>
+                                        {/* ✅ CEO editable KR weight */}
+                                        <div className="flex flex-col sm:items-end gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <div className="text-xs text-muted-foreground">Weight:</div>
+
+                                            <Input
+                                              className="h-8 w-24"
+                                              type="number"
+                                              min={1}
+                                              max={100}
+                                              value={draftKRWeight}
+                                              onChange={(e) =>
+                                                setKrWeightDraftById((p) => ({
+                                                  ...p,
+                                                  [kr.id]: Number(e.target.value || 1),
+                                                }))
+                                              }
+                                            />
+
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={!isKrWeightDirty || isSavingKrW || isSaving}
+                                              onClick={() => saveKRWeight(kr.id, draftKRWeight)}
+                                            >
+                                              <Save className="h-4 w-4 mr-2" />
+                                              Save
+                                            </Button>
+                                          </div>
+
+                                          <div className="text-xs text-muted-foreground">Progress updated by team</div>
+                                        </div>
                                       </li>
                                     );
                                   })}
