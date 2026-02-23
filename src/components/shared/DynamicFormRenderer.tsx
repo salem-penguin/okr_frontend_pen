@@ -33,6 +33,10 @@ interface DynamicFormRendererProps {
   isReadOnly?: boolean;
   submitLabel?: string;
   showDraftButton?: boolean;
+  showKrSelector?: boolean;
+  krOptions?: Array<{ id: string; label: string }>;
+  fieldKrMap?: Record<string, string | null>;
+  onFieldKrChange?: (fieldId: string, krId: string | null) => void;
 }
 
 // Build Zod schema dynamically based on form fields
@@ -82,6 +86,10 @@ export function DynamicFormRenderer({
   isReadOnly = false,
   submitLabel = 'Submit Report',
   showDraftButton = true,
+  showKrSelector = false,
+  krOptions = [],
+  fieldKrMap = {},
+  onFieldKrChange,
 }: DynamicFormRendererProps) {
   const schema = buildSchema(fields);
   
@@ -122,6 +130,10 @@ export function DynamicFormRenderer({
   };
 
   const renderField = (field: FormField) => {
+    const extraValue = '__extra__';
+    const selectedKr = fieldKrMap[field.id] ?? null;
+    const selectValue = selectedKr ?? extraValue;
+
     return (
       <FormFieldComponent
         key={field.id}
@@ -129,10 +141,36 @@ export function DynamicFormRenderer({
         name={field.id}
         render={({ field: formField }) => (
           <FormItem>
-            <FormLabel>
-              {field.label}
-              {field.required && <span className="text-destructive ml-1">*</span>}
-            </FormLabel>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <FormLabel>
+                {field.label}
+                {field.required && <span className="text-destructive ml-1">*</span>}
+              </FormLabel>
+              {showKrSelector && (
+                <div className="w-full sm:w-64">
+                  <Select
+                    value={selectValue}
+                    onValueChange={(value) => {
+                      if (!onFieldKrChange) return;
+                      onFieldKrChange(field.id, value === extraValue ? null : value);
+                    }}
+                    disabled={isReadOnly || !onFieldKrChange}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Link to KR (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={extraValue}>Extra / Not linked</SelectItem>
+                      {krOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
             <FormControl>
               {field.type === 'textarea' ? (
                 <Textarea
