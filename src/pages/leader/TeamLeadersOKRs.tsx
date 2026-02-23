@@ -1,491 +1,5 @@
-// import { useEffect, useMemo, useState } from "react";
-// import { apiFetch } from "@/api/client";
-// import { useAuth } from "@/contexts/AuthContext";
-// import { toast } from "sonner";
-
-// import {
-//   Card,
-//   CardContent,
-//   CardHeader,
-//   CardTitle,
-//   CardDescription,
-// } from "@/components/ui/card";
-// import { Button } from "@/components/ui/button";
-// import { Input } from "@/components/ui/input";
-// import { LoadingState } from "@/components/shared/LoadingState";
-// import { EmptyState } from "@/components/shared/EmptyState";
-
-// import { ChevronUp, ChevronDown, RefreshCw, Save } from "lucide-react";
-
-// // --------------------
-// // Types
-// // --------------------
-// type KRStatus = "not_started" | "in_progress" | "completed";
-// type ObjectiveTimeline = {
-//   timeline_start: string; // ISO date
-//   timeline_end: string;   // ISO date
-//   is_expired: boolean;
-//   days_remaining: number;
-// };
-
-// type KR = {
-//   id: string;
-//   title: string;
-//   status: KRStatus;
-//   progress: number;
-//   weight: number;
-// };
-
-// type Objective = {
-//   id: string;
-//   title: string;
-//   progress: number;
-//   key_results: KR[];
-//   timeline?: ObjectiveTimeline; 
-// };
-
-// type TeamOKRsResponse = {
-//   quarter: {
-//     quarter_id: string;
-//     start_date: string;
-//     end_date: string;
-//     seconds_remaining: number;
-//   };
-//   team: {
-//     team_id: string;
-//     team_name: string;
-//     objectives: Objective[];
-//   };
-// };
-
-// type UpdateKRProgressRequest = {
-//   id: string;
-//   status: KRStatus;
-//   progress: number;
-// };
-
-// // --------------------
-// // Helpers
-// // --------------------
-// function safeArray<T>(x: T[] | undefined | null): T[] {
-//   return Array.isArray(x) ? x : [];
-// }
-
-// function clampProgress(v: number) {
-//   if (Number.isNaN(v)) return 0;
-//   return Math.min(100, Math.max(0, Math.round(v)));
-// }
-
-// function formatDuration(seconds: number) {
-//   const s = Math.max(0, seconds);
-//   const days = Math.floor(s / 86400);
-//   const hours = Math.floor((s % 86400) / 3600);
-//   const mins = Math.floor((s % 3600) / 60);
-//   return `${days}d ${hours}h ${mins}m`;
-// }
-
-// function statusLabel(s: KRStatus) {
-//   if (s === "completed") return { text: "Completed", cls: "text-green-600" };
-//   if (s === "in_progress") return { text: "In Progress", cls: "text-amber-600" };
-//   return { text: "Not Started", cls: "text-muted-foreground" };
-// }
-
-// // --------------------
-// // Component
-// // --------------------
-// export default function TeamLeaderOKRs() {
-//   const { user } = useAuth();
-//   const isLeader = user?.role === "team_leader";
-
-//   const [data, setData] = useState<TeamOKRsResponse | null>(null);
-//   const [isLoading, setIsLoading] = useState(true);
-
-//   // collapse per objective
-//   const [openObjectives, setOpenObjectives] = useState<Record<string, boolean>>(
-//     {}
-//   );
-
-//   // draft edits per KR
-//   const [krEdits, setKrEdits] = useState<
-//     Record<string, { status: KRStatus; progress: number }>
-//   >({});
-
-//   const [isSaving, setIsSaving] = useState(false);
-
-//   const remaining = useMemo(
-//     () => formatDuration(data?.quarter.seconds_remaining ?? 0),
-//     [data?.quarter.seconds_remaining]
-//   );
-
-//   const load = async () => {
-//     setIsLoading(true);
-//     try {
-//       const res = await apiFetch<TeamOKRsResponse>("/okrs/team/current");
-
-//       // normalize to avoid crashes
-//       const normalized: TeamOKRsResponse = {
-//         quarter: res.quarter,
-//         team: {
-//           ...res.team,
-//           objectives: safeArray(res.team?.objectives).map((o) => ({
-//             ...o,
-//             key_results: safeArray(o.key_results),
-//           })),
-//         },
-//       };
-
-//       setData(normalized);
-
-//       // default open objectives
-//       setOpenObjectives((prev) => {
-//         const next = { ...prev };
-//         for (const o of normalized.team.objectives) {
-//           if (typeof next[o.id] !== "boolean") next[o.id] = true;
-//         }
-//         return next;
-//       });
-
-//       // initialize kr edits from server data (only if not already edited)
-//       setKrEdits((prev) => {
-//         const next = { ...prev };
-//         for (const o of normalized.team.objectives) {
-//           for (const kr of safeArray(o.key_results)) {
-//             if (!next[kr.id]) {
-//               next[kr.id] = {
-//                 status: kr.status,
-//                 progress: clampProgress(kr.progress ?? 0),
-//               };
-//             }
-//           }
-//         }
-//         return next;
-//       });
-//     } catch (e) {
-//       console.error(e);
-//       toast.error("Failed to load Team OKRs");
-//       setData(null);
-//     } finally {
-//       setIsLoading(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     load();
-
-//     // countdown tick (1 minute)
-//     const t = setInterval(() => {
-//       setData((prev) => {
-//         if (!prev) return prev;
-//         return {
-//           ...prev,
-//           quarter: {
-//             ...prev.quarter,
-//             seconds_remaining: Math.max(0, (prev.quarter.seconds_remaining ?? 0) - 60),
-//           },
-//         };
-//       });
-//     }, 60_000);
-
-//     return () => clearInterval(t);
-//     // eslint-disable-next-line react-hooks/exhaustive-deps
-//   }, []);
-
-//   // access guard
-//   if (!isLeader) {
-//     return (
-//       <div className="p-6">
-//         <EmptyState
-//           title="Access Denied"
-//           description="This page is available for Team Leaders only."
-//         />
-//       </div>
-//     );
-//   }
-
-//   if (isLoading) return <LoadingState message="Loading Team OKRs..." />;
-
-//   if (!data) {
-//     return (
-//       <div className="p-6">
-//         <EmptyState
-//           title="No data"
-//           description="Unable to load Team OKRs."
-//           actionLabel="Retry"
-//           onAction={load}
-//         />
-//       </div>
-//     );
-//   }
-
-//   const objectives = safeArray(data.team.objectives);
-
-//   const updateKR = (krId: string, patch: Partial<{ status: KRStatus; progress: number }>) => {
-//     setKrEdits((prev) => {
-//       const current = prev[krId] ?? { status: "not_started" as KRStatus, progress: 0 };
-//       const next = {
-//         ...current,
-//         ...patch,
-//       };
-//       return { ...prev, [krId]: next };
-//     });
-//   };
-
-//   const saveKR = async (krId: string) => {
-//     const edit = krEdits[krId];
-//     if (!edit) return;
-
-//     const payload: UpdateKRProgressRequest = {
-//       id: krId,
-//       status: edit.status,
-//       progress: clampProgress(edit.progress),
-//     };
-
-//     setIsSaving(true);
-//     try {
-//       await apiFetch("/okrs/company/key-results/progress", {
-//         method: "PATCH",
-//         body: JSON.stringify(payload),
-//       });
-
-//       toast.success("Key Result updated");
-//       await load(); // reload to refresh progress aggregation
-//     } catch (e) {
-//       console.error(e);
-//       toast.error("Failed to update Key Result");
-//     } finally {
-//       setIsSaving(false);
-//     }
-//   };
-
-//   return (
-//     <div className="p-6 space-y-6">
-//       {/* Header */}
-//       <div className="flex items-start justify-between gap-4">
-//         <div>
-//           <h1 className="text-2xl font-bold">Team OKRs</h1>
-//           <p className="text-muted-foreground">
-//             {data.team.team_name} • {data.quarter.quarter_id} ({data.quarter.start_date} →{" "}
-//             {data.quarter.end_date}) • Time left:{" "}
-//             <span className="font-medium">{remaining}</span>
-//           </p>
-//         </div>
-
-//         <Button variant="outline" onClick={load} disabled={isSaving}>
-//           <RefreshCw className="h-4 w-4 mr-2" />
-//           Refresh
-//         </Button>
-//       </div>
-
-//       {objectives.length === 0 ? (
-//         <EmptyState
-//           title="No objectives assigned"
-//           description="The CEO has not assigned OKRs to your team for this quarter yet."
-//         />
-//       ) : (
-//         <div className="space-y-6">
-//           {objectives.map((obj) => {
-//             const isOpen = openObjectives[obj.id] ?? true;
-
-//             return (
-//               <Card key={obj.id} className="border-border">
-//                 <CardHeader className="flex flex-row items-center justify-between">
-//                   <div className="space-y-1">
-//                     <CardTitle className="text-lg">{obj.title}</CardTitle>
-//                     <CardDescription>
-//                       Objective progress is calculated from Key Results.
-//                     </CardDescription>
-//                   </div>
-
-//                   <Button
-//                     variant="ghost"
-//                     size="icon"
-//                     onClick={() =>
-//                       setOpenObjectives((p) => ({ ...p, [obj.id]: !isOpen }))
-//                     }
-//                     className="h-8 w-8"
-//                   >
-//                     {isOpen ? (
-//                       <ChevronUp className="h-4 w-4" />
-//                     ) : (
-//                       <ChevronDown className="h-4 w-4" />
-//                     )}
-//                   </Button>
-//                 </CardHeader>
-
-//                 {isOpen && (
-//                   <CardContent className="space-y-6">
-//                     {/* Objective Progress */}
-//                     <div className="space-y-2">
-//                       <div className="flex items-center justify-between text-sm">
-//                         <span className="text-muted-foreground">Objective Progress</span>
-//                         <span className="font-medium">{obj.progress ?? 0}%</span>
-//                       </div>
-//                       <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-//                         <div
-//                           className="h-2 rounded-full bg-primary"
-//                           style={{
-//                             width: `${Math.min(100, Math.max(0, obj.progress ?? 0))}%`,
-//                           }}
-//                         />
-//                       </div>
-//                     </div>
-//                     {/* ✅ Objective Timeline (read-only) */}
-//     <div className="rounded-md border border-border p-3 space-y-2">
-//       <div className="text-sm font-medium">Objective Timeline</div>
-
-//       {obj.timeline ? (
-//         <div className="flex flex-wrap items-center gap-2 text-sm">
-//           <span className="text-muted-foreground">
-//             {obj.timeline.timeline_start.slice(0, 10)} → {obj.timeline.timeline_end.slice(0, 10)}
-//           </span>
-
-//           <span className="text-muted-foreground">
-//             • Days remaining: <span className="font-medium">{obj.timeline.days_remaining}</span>
-//           </span>
-
-//           {obj.timeline.is_expired ? (
-//             <span className="rounded-md border px-2 py-1 text-xs text-red-600">Expired</span>
-//           ) : (
-//             <span className="rounded-md border px-2 py-1 text-xs text-emerald-600">Active</span>
-//           )}
-//         </div>
-//       ) : (
-//         <span className="text-sm text-muted-foreground">Timeline not available.</span>
-//       )}
-//     </div>
-
-//                     {/* Key Results */}
-//                     <div className="space-y-2">
-//                       <div className="text-sm font-medium">Key Results</div>
-
-//                       {safeArray(obj.key_results).length === 0 ? (
-//                         <p className="text-sm text-muted-foreground">
-//                           No key results yet for this objective.
-//                         </p>
-//                       ) : (
-//                         <ul className="space-y-3">
-//                           {safeArray(obj.key_results).map((kr) => {
-//                             const edit = krEdits[kr.id] ?? {
-//                               status: kr.status,
-//                               progress: clampProgress(kr.progress ?? 0),
-//                             };
-//                             const s = statusLabel(edit.status);
-
-//                             return (
-//                               <li
-//                                 key={kr.id}
-//                                 className="rounded-md border border-border p-4 space-y-3"
-//                               >
-//                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-//                                   <div className="space-y-1">
-//                                       <div className="text-sm font-semibold">{kr.title}</div>
-
-//   <div className={`text-xs ${s.cls}`}>
-//     {s.text} • {clampProgress(edit.progress)}% • Weight: {kr.weight ?? 1}
-//   </div>
-//                                   </div>
-
-//                                   <Button
-//                                     onClick={() => saveKR(kr.id)}
-//                                     disabled={isSaving}
-//                                     className="sm:w-auto w-full"
-//                                   >
-//                                     <Save className="h-4 w-4 mr-2" />
-//                                     Save
-//                                   </Button>
-//                                 </div>
-
-//                                 {/* Status + Progress controls */}
-//                                 <div className="grid gap-3 sm:grid-cols-6">
-//                                   <div className="sm:col-span-2">
-//                                     <label className="text-xs text-muted-foreground">
-//                                       Status
-//                                     </label>
-//                                     <select
-//                                       className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-//                                       value={edit.status}
-//                                       onChange={(e) =>
-//                                         updateKR(kr.id, {
-//                                           status: e.target.value as KRStatus,
-//                                         })
-//                                       }
-//                                     >
-//                                       <option value="not_started">Not Started</option>
-//                                       <option value="in_progress">In Progress</option>
-//                                       <option value="completed">Completed</option>
-//                                     </select>
-//                                   </div>
-
-//                                   <div className="sm:col-span-2">
-//                                     <label className="text-xs text-muted-foreground">
-//                                       Progress (0–100)
-//                                     </label>
-//                                     <Input
-//                                       className="mt-1"
-//                                       type="number"
-//                                       min={0}
-//                                       max={100}
-//                                       value={edit.progress}
-//                                       onChange={(e) =>
-//                                         updateKR(kr.id, {
-//                                           progress: clampProgress(Number(e.target.value)),
-//                                         })
-//                                       }
-//                                     />
-//                                   </div>
-
-//                                   <div className="sm:col-span-2">
-//                                     <label className="text-xs text-muted-foreground">
-//                                       Slider
-//                                     </label>
-//                                     <div className="mt-3">
-//                                       <input
-//                                         type="range"
-//                                         min={0}
-//                                         max={100}
-//                                         value={clampProgress(edit.progress)}
-//                                         onChange={(e) =>
-//                                           updateKR(kr.id, {
-//                                             progress: clampProgress(Number(e.target.value)),
-//                                           })
-//                                         }
-//                                         className="w-full"
-//                                       />
-//                                     </div>
-//                                   </div>
-//                                 </div>
-
-//                                 {/* Progress bar preview */}
-//                                 <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-//                                   <div
-//                                     className="h-2 rounded-full bg-primary"
-//                                     style={{
-//                                       width: `${Math.min(
-//                                         100,
-//                                         Math.max(0, clampProgress(edit.progress))
-//                                       )}%`,
-//                                     }}
-//                                   />
-//                                 </div>
-//                               </li>
-//                             );
-//                           })}
-//                         </ul>
-//                       )}
-//                     </div>
-//                   </CardContent>
-//                 )}
-//               </Card>
-//             );
-//           })}
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-
-import { useEffect, useMemo, useState } from "react";
+// src/pages/leader/TeamLeadersOKRs.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -502,15 +16,40 @@ import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/shared/LoadingState";
 import { EmptyState } from "@/components/shared/EmptyState";
 
-import { ChevronUp, ChevronDown, RefreshCw, Save, Plus } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+import {
+  ChevronUp,
+  ChevronDown,
+  RefreshCw,
+  Save,
+  Plus,
+  MessageSquare,
+  Loader2,
+} from "lucide-react";
 
 // --------------------
 // Types
 // --------------------
 type KRStatus = "not_started" | "in_progress" | "completed";
+
 type ObjectiveTimeline = {
-  timeline_start: string; // ISO date
-  timeline_end: string; // ISO date
+  timeline_start: string;
+  timeline_end: string;
   is_expired: boolean;
   days_remaining: number;
 };
@@ -557,6 +96,32 @@ type AddKeyResultRequest = {
   weight: number;
 };
 
+// ✅ Backend response for KR updates
+type KRUpdateItem = {
+  id: string;
+  week_id: string;
+  week_label?: string | null;
+  note: string;
+  meta: any;
+  created_at: string;
+  author: null | {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+  };
+};
+
+type KRUpdatesResponse = {
+  items: KRUpdateItem[];
+  count: number;
+};
+
+type NotesState = {
+  loading: boolean;
+  loaded: boolean;
+  items: KRUpdateItem[];
+};
+
 // --------------------
 // Helpers
 // --------------------
@@ -565,7 +130,7 @@ function safeArray<T>(x: T[] | undefined | null): T[] {
 }
 
 function clampProgress(v: number) {
-  if (Number.isNaN(v)) return 0;
+  if (!Number.isFinite(v)) return 0;
   return Math.min(100, Math.max(0, Math.round(v)));
 }
 
@@ -577,10 +142,76 @@ function formatDuration(seconds: number) {
   return `${days}d ${hours}h ${mins}m`;
 }
 
+function statusFromProgress(p: number): KRStatus {
+  const v = clampProgress(p);
+  if (v >= 100) return "completed";
+  if (v > 0) return "in_progress";
+  return "not_started";
+}
+
 function statusLabel(s: KRStatus) {
-  if (s === "completed") return { text: "Completed", cls: "text-green-600" };
-  if (s === "in_progress") return { text: "In Progress", cls: "text-amber-600" };
-  return { text: "Not Started", cls: "text-muted-foreground" };
+  if (s === "completed")
+    return { text: "Completed", cls: "text-emerald-600 dark:text-emerald-400" };
+  if (s === "in_progress")
+    return { text: "In Progress", cls: "text-amber-700 dark:text-amber-400" };
+  return { text: "Not Started", cls: "text-red-600 dark:text-red-400" };
+}
+
+function statusTone(s: KRStatus): "neutral" | "amber" | "emerald" | "red" {
+  if (s === "completed") return "emerald";
+  if (s === "in_progress") return "amber";
+  return "red";
+}
+
+function prettyDate(iso?: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+}
+
+// --------------------
+// Theme-safe design tokens
+// --------------------
+const GLASS =
+  "border border-border/60 bg-card/60 backdrop-blur-xl " +
+  "shadow-[0_10px_30px_rgba(0,0,0,0.10)] dark:shadow-[0_18px_50px_rgba(0,0,0,0.35)] " +
+  "ring-1 ring-primary/10";
+
+const GLASS_SUB = "border border-border/60 bg-background/40 backdrop-blur";
+
+function Pill({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "amber" | "emerald" | "red";
+}) {
+  const toneCls =
+    tone === "emerald"
+      ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-300"
+      : tone === "amber"
+      ? "bg-amber-500/10 text-amber-800 border-amber-500/20 dark:text-amber-300"
+      : tone === "red"
+      ? "bg-red-500/10 text-red-800 border-red-500/20 dark:text-red-300"
+      : "bg-muted/40 text-muted-foreground border-border/60";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${toneCls}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function ProgressBar({ value }: { value: number }) {
+  const v = clampProgress(value);
+  return (
+    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+      <div className="h-2 rounded-full bg-primary" style={{ width: `${v}%` }} />
+    </div>
+  );
 }
 
 // --------------------
@@ -593,31 +224,78 @@ export default function TeamLeaderOKRs() {
   const [data, setData] = useState<TeamOKRsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // collapse per objective
   const [openObjectives, setOpenObjectives] = useState<Record<string, boolean>>({});
+  const [krEdits, setKrEdits] = useState<Record<string, { progress: number }>>({});
 
-  // draft edits per KR
-  const [krEdits, setKrEdits] = useState<
-    Record<string, { status: KRStatus; progress: number }>
-  >({});
-
-  // ✅ Add KR drafts per objective
   const [krDraftByObjective, setKrDraftByObjective] = useState<Record<string, string>>({});
   const [krWeightByObjective, setKrWeightByObjective] = useState<Record<string, number>>({});
-
   const [isSaving, setIsSaving] = useState(false);
+
+  // UX controls
+  const [query, setQuery] = useState("");
+  const [onlyAttention, setOnlyAttention] = useState(false);
+
+  // ✅ Modal state
+  const [krModalOpen, setKrModalOpen] = useState(false);
+  const [selectedKr, setSelectedKr] = useState<null | {
+    krId: string;
+    krTitle: string;
+    objectiveTitle: string;
+  }>(null);
+
+  // ✅ Notes cache
+  const [notesByKrId, setNotesByKrId] = useState<Record<string, NotesState>>({});
 
   const remaining = useMemo(
     () => formatDuration(data?.quarter.seconds_remaining ?? 0),
     [data?.quarter.seconds_remaining]
   );
 
+  const objectives = useMemo(
+    () => safeArray(data?.team?.objectives),
+    [data?.team?.objectives]
+  );
+
+  const attentionCount = useMemo(() => {
+    let c = 0;
+    for (const o of objectives) {
+      const tl = o.timeline;
+      const needsTimeline = (tl?.is_expired ?? false) || (tl ? tl.days_remaining <= 3 : false);
+      const needsProgress = clampProgress(o.progress) < 20;
+      const noKrs = safeArray(o.key_results).length === 0;
+      if (needsTimeline || needsProgress || noKrs) c += 1;
+    }
+    return c;
+  }, [objectives]);
+
+  const filteredObjectives = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const base = q
+      ? objectives.filter((o) => {
+          const inObj = o.title.toLowerCase().includes(q);
+          const inKrs = safeArray(o.key_results).some((k) =>
+            k.title.toLowerCase().includes(q)
+          );
+          return inObj || inKrs;
+        })
+      : objectives;
+
+    if (!onlyAttention) return base;
+
+    return base.filter((o) => {
+      const tl = o.timeline;
+      const needsTimeline = (tl?.is_expired ?? false) || (tl ? tl.days_remaining <= 3 : false);
+      const needsProgress = clampProgress(o.progress) < 20;
+      const noKrs = safeArray(o.key_results).length === 0;
+      return needsTimeline || needsProgress || noKrs;
+    });
+  }, [objectives, query, onlyAttention]);
+
   const load = async () => {
     setIsLoading(true);
     try {
       const res = await apiFetch<TeamOKRsResponse>("/okrs/team/current");
 
-      // normalize to avoid crashes
       const normalized: TeamOKRsResponse = {
         quarter: res.quarter,
         team: {
@@ -631,7 +309,6 @@ export default function TeamLeaderOKRs() {
 
       setData(normalized);
 
-      // default open objectives
       setOpenObjectives((prev) => {
         const next = { ...prev };
         for (const o of normalized.team.objectives) {
@@ -640,23 +317,16 @@ export default function TeamLeaderOKRs() {
         return next;
       });
 
-      // initialize kr edits from server data (only if not already edited)
       setKrEdits((prev) => {
         const next = { ...prev };
         for (const o of normalized.team.objectives) {
           for (const kr of safeArray(o.key_results)) {
-            if (!next[kr.id]) {
-              next[kr.id] = {
-                status: kr.status,
-                progress: clampProgress(kr.progress ?? 0),
-              };
-            }
+            if (!next[kr.id]) next[kr.id] = { progress: clampProgress(kr.progress ?? 0) };
           }
         }
         return next;
       });
 
-      // ✅ init KR add-weight drafts per objective
       setKrWeightByObjective((prev) => {
         const next = { ...prev };
         for (const obj of normalized.team.objectives) {
@@ -676,7 +346,6 @@ export default function TeamLeaderOKRs() {
   useEffect(() => {
     load();
 
-    // countdown tick (1 minute)
     const t = setInterval(() => {
       setData((prev) => {
         if (!prev) return prev;
@@ -694,46 +363,10 @@ export default function TeamLeaderOKRs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // access guard
-  if (!isLeader) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          title="Access Denied"
-          description="This page is available for Team Leaders only."
-        />
-      </div>
-    );
-  }
-
-  if (isLoading) return <LoadingState message="Loading Team OKRs..." />;
-
-  if (!data) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          title="No data"
-          description="Unable to load Team OKRs."
-          actionLabel="Retry"
-          onAction={load}
-        />
-      </div>
-    );
-  }
-
-  const objectives = safeArray(data.team.objectives);
-
-  const updateKR = (
-    krId: string,
-    patch: Partial<{ status: KRStatus; progress: number }>
-  ) => {
+  const updateKRProgress = (krId: string, progress: number) => {
     setKrEdits((prev) => {
-      const current = prev[krId] ?? { status: "not_started" as KRStatus, progress: 0 };
-      const next = {
-        ...current,
-        ...patch,
-      };
-      return { ...prev, [krId]: next };
+      const current = prev[krId] ?? { progress: 0 };
+      return { ...prev, [krId]: { ...current, progress: clampProgress(progress) } };
     });
   };
 
@@ -741,11 +374,10 @@ export default function TeamLeaderOKRs() {
     const edit = krEdits[krId];
     if (!edit) return;
 
-    const payload: UpdateKRProgressRequest = {
-      id: krId,
-      status: edit.status,
-      progress: clampProgress(edit.progress),
-    };
+    const progress = clampProgress(edit.progress);
+    const autoStatus = statusFromProgress(progress);
+
+    const payload: UpdateKRProgressRequest = { id: krId, status: autoStatus, progress };
 
     setIsSaving(true);
     try {
@@ -753,9 +385,8 @@ export default function TeamLeaderOKRs() {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
-
       toast.success("Key Result updated");
-      await load(); // reload to refresh progress aggregation
+      await load();
     } catch (e) {
       console.error(e);
       toast.error("Failed to update Key Result");
@@ -764,8 +395,6 @@ export default function TeamLeaderOKRs() {
     }
   };
 
-  // ✅ Team leader: add key result
-  // Backend endpoint should be: POST /okrs/team/key-results
   const addKeyResult = async (objectiveId: string) => {
     const title = (krDraftByObjective[objectiveId] || "").trim();
     const weight = Number(krWeightByObjective[objectiveId] ?? 1);
@@ -775,11 +404,7 @@ export default function TeamLeaderOKRs() {
       return toast.error("Weight must be between 1 and 100");
     }
 
-    const payload: AddKeyResultRequest = {
-      objective_id: objectiveId,
-      title,
-      weight,
-    };
+    const payload: AddKeyResultRequest = { objective_id: objectiveId, title, weight };
 
     setIsSaving(true);
     try {
@@ -801,23 +426,218 @@ export default function TeamLeaderOKRs() {
     }
   };
 
+  // ✅ Load notes for selected KR (cached)
+  const loadKrNotes = async (krId: string, force = false) => {
+    const current = notesByKrId[krId];
+    if (!force && (current?.loading || current?.loaded)) return;
+
+    setNotesByKrId((prev) => ({
+      ...prev,
+      [krId]: { loading: true, loaded: false, items: prev[krId]?.items ?? [] },
+    }));
+
+    try {
+      const res = await apiFetch<KRUpdatesResponse>(
+        `/okrs/key-results/${encodeURIComponent(krId)}/updates?limit=200`
+      );
+
+      const items = safeArray(res.items)
+        .slice()
+        .sort((a, b) => {
+          const ta = Date.parse(a.created_at || "");
+          const tb = Date.parse(b.created_at || "");
+          return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+        });
+
+      setNotesByKrId((prev) => ({
+        ...prev,
+        [krId]: { loading: false, loaded: true, items },
+      }));
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load KR notes");
+      setNotesByKrId((prev) => ({
+        ...prev,
+        [krId]: { loading: false, loaded: true, items: [] },
+      }));
+    }
+  };
+
+  const openKrModal = async (kr: KR, objectiveTitle: string) => {
+    setSelectedKr({ krId: kr.id, krTitle: kr.title, objectiveTitle });
+    setKrModalOpen(true);
+    await loadKrNotes(kr.id);
+  };
+
+  // --------------------
+  // Guards
+  // --------------------
+  if (!isLeader) {
+    return (
+      <div className="p-6">
+        <EmptyState title="Access Denied" description="This page is available for Team Leaders only." />
+      </div>
+    );
+  }
+
+  if (isLoading) return <LoadingState message="Loading Team OKRs..." />;
+
+  if (!data) {
+    return (
+      <div className="p-6">
+        <EmptyState title="No data" description="Unable to load Team OKRs." actionLabel="Retry" onAction={load} />
+      </div>
+    );
+  }
+
+  const selectedNotesState = selectedKr ? notesByKrId[selectedKr.krId] : undefined;
+
+  // --------------------
+  // UI
+  // --------------------
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 relative">
+      {/* KR Notes Modal */}
+      <Dialog
+        open={krModalOpen}
+        onOpenChange={(open) => {
+          setKrModalOpen(open);
+          if (!open) setSelectedKr(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              Key Result Comments
+            </DialogTitle>
+            <DialogDescription>
+              {selectedKr ? (
+                <span className="text-sm">
+                  <span className="font-medium text-foreground">{selectedKr.krTitle}</span>
+                  <span className="text-muted-foreground"> • {selectedKr.objectiveTitle}</span>
+                </span>
+              ) : (
+                "—"
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-muted-foreground">
+              {selectedNotesState?.loaded ? `${selectedNotesState.items.length} updates` : "Loading..."}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => selectedKr && loadKrNotes(selectedKr.krId, true)}
+              disabled={!selectedKr || selectedNotesState?.loading}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
+
+          <div className={`rounded-xl ${GLASS_SUB} p-3 max-h-[60vh] overflow-auto`}>
+            {!selectedKr ? (
+              <div className="text-sm text-muted-foreground">No KR selected.</div>
+            ) : selectedNotesState?.loading && !selectedNotesState.loaded ? (
+              <div className="text-sm text-muted-foreground">Loading comments...</div>
+            ) : (selectedNotesState?.items?.length ?? 0) === 0 ? (
+              <div className="text-sm text-muted-foreground">No comments yet for this Key Result.</div>
+            ) : (
+              <div className="space-y-3">
+                {safeArray(selectedNotesState?.items).map((u) => (
+                  <div key={u.id} className="rounded-xl border border-border/60 bg-card/40 p-3 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs text-muted-foreground">
+                        {u.week_label ?? u.week_id} • {prettyDate(u.created_at)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {u.author?.name ? (
+                          <>
+                            <span className="font-medium text-foreground">{u.author.name}</span>
+                            {u.author.email ? <span className="ml-2">{u.author.email}</span> : null}
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </div>
+                    </div>
+
+                    {u.meta ? (
+                      <div className="flex flex-wrap gap-2">
+                        {u.meta?.field_label ? <Pill>{u.meta.field_label}</Pill> : null}
+                        {u.meta?.field_id ? <Pill>{u.meta.field_id}</Pill> : null}
+                      </div>
+                    ) : null}
+
+                    <div className="text-sm whitespace-pre-wrap">{u.note}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Background accents */}
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute -top-24 right-0 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute bottom-0 left-0 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+      </div>
+
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Team OKRs</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">Team OKRs</h1>
+            <span className="inline-flex items-center rounded-full border border-border/60 bg-card/60 px-2 py-1 text-xs text-muted-foreground backdrop-blur">
+              {data.quarter.quarter_id}
+            </span>
+          </div>
+
           <p className="text-muted-foreground">
-            {data.team.team_name} • {data.quarter.quarter_id} ({data.quarter.start_date} →{" "}
-            {data.quarter.end_date}) • Time left:{" "}
+            {data.team.team_name} • {data.quarter.start_date} → {data.quarter.end_date} • Time left:{" "}
             <span className="font-medium">{remaining}</span>
           </p>
+
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Pill>
+              Objectives: <span className="ml-1 font-medium text-foreground">{objectives.length}</span>
+            </Pill>
+            {attentionCount > 0 ? (
+              <Pill tone="amber">
+                Needs attention: <span className="ml-1 font-medium text-foreground">{attentionCount}</span>
+              </Pill>
+            ) : (
+              <Pill tone="emerald">Healthy</Pill>
+            )}
+          </div>
         </div>
 
-        <Button variant="outline" onClick={load} disabled={isSaving}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={load} disabled={isSaving}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+
+            <Button variant={onlyAttention ? "default" : "outline"} onClick={() => setOnlyAttention((p) => !p)}>
+              Attention
+            </Button>
+          </div>
+
+          <div className={`w-full sm:w-[360px] rounded-xl ${GLASS} p-2`}>
+            <Input
+              className="h-9 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+              placeholder="Search objectives or KRs..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
       </div>
 
       {objectives.length === 0 ? (
@@ -827,17 +647,27 @@ export default function TeamLeaderOKRs() {
         />
       ) : (
         <div className="space-y-6">
-          {objectives.map((obj) => {
+          {filteredObjectives.map((obj) => {
             const isOpen = openObjectives[obj.id] ?? true;
 
+            const tl = obj.timeline;
+            const needsTimeline = (tl?.is_expired ?? false) || (tl ? tl.days_remaining <= 3 : false);
+            const needsProgress = clampProgress(obj.progress) < 20;
+            const noKrs = safeArray(obj.key_results).length === 0;
+
             return (
-              <Card key={obj.id} className="border-border">
+              <Card key={obj.id} className={`${GLASS} overflow-hidden`}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div className="space-y-1">
-                    <CardTitle className="text-lg">{obj.title}</CardTitle>
-                    <CardDescription>
-                      Objective progress is calculated from Key Results.
-                    </CardDescription>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-lg">{obj.title}</CardTitle>
+                      {needsTimeline || needsProgress || noKrs ? (
+                        <Pill tone="amber">Attention</Pill>
+                      ) : (
+                        <Pill tone="emerald">OK</Pill>
+                      )}
+                    </div>
+                    <CardDescription>Objective progress is calculated from Key Results.</CardDescription>
                   </div>
 
                   <Button
@@ -846,94 +676,117 @@ export default function TeamLeaderOKRs() {
                     onClick={() => setOpenObjectives((p) => ({ ...p, [obj.id]: !isOpen }))}
                     className="h-8 w-8"
                   >
-                    {isOpen ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
+                    {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </Button>
                 </CardHeader>
 
                 {isOpen && (
                   <CardContent className="space-y-6">
                     {/* Objective Progress */}
-                    <div className="space-y-2">
+                    <div className={`rounded-xl ${GLASS_SUB} p-3 space-y-2`}>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Objective Progress</span>
-                        <span className="font-medium">{obj.progress ?? 0}%</span>
+                        <span className="font-medium">{clampProgress(obj.progress ?? 0)}%</span>
                       </div>
-                      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-2 rounded-full bg-primary"
-                          style={{
-                            width: `${Math.min(100, Math.max(0, obj.progress ?? 0))}%`,
-                          }}
-                        />
-                      </div>
+                      <ProgressBar value={obj.progress ?? 0} />
                     </div>
 
-                    {/* Objective Timeline (read-only) */}
-                    <div className="rounded-md border border-border p-3 space-y-2">
-                      <div className="text-sm font-medium">Objective Timeline</div>
+                    {/* Timeline */}
+                    <div className={`rounded-xl ${GLASS_SUB} p-3 space-y-2`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-medium">Objective Timeline</div>
+                        {obj.timeline ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Pill tone={obj.timeline.is_expired ? "amber" : "emerald"}>
+                              {obj.timeline.is_expired ? "Expired" : "Active"}
+                            </Pill>
+                            <Pill>
+                              Days left:{" "}
+                              <span className="ml-1 font-medium text-foreground">{obj.timeline.days_remaining}</span>
+                            </Pill>
+                          </div>
+                        ) : (
+                          <Pill>Timeline not available</Pill>
+                        )}
+                      </div>
 
                       {obj.timeline ? (
-                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="text-muted-foreground">
-                            {obj.timeline.timeline_start.slice(0, 10)} →{" "}
-                            {obj.timeline.timeline_end.slice(0, 10)}
-                          </span>
-
-                          <span className="text-muted-foreground">
-                            • Days remaining:{" "}
-                            <span className="font-medium">{obj.timeline.days_remaining}</span>
-                          </span>
-
-                          {obj.timeline.is_expired ? (
-                            <span className="rounded-md border px-2 py-1 text-xs text-red-600">
-                              Expired
-                            </span>
-                          ) : (
-                            <span className="rounded-md border px-2 py-1 text-xs text-emerald-600">
-                              Active
-                            </span>
-                          )}
+                        <div className="text-sm text-muted-foreground">
+                          {obj.timeline.timeline_start.slice(0, 10)} → {obj.timeline.timeline_end.slice(0, 10)}
                         </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">
-                          Timeline not available.
-                        </span>
-                      )}
+                      ) : null}
                     </div>
 
                     {/* Key Results */}
                     <div className="space-y-2">
-                      <div className="text-sm font-medium">Key Results</div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-medium">Key Results</div>
+                        <div className="text-xs text-muted-foreground">{safeArray(obj.key_results).length} items</div>
+                      </div>
 
                       {safeArray(obj.key_results).length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
+                        <div className={`rounded-xl ${GLASS_SUB} p-3 text-sm text-muted-foreground`}>
                           No key results yet for this objective.
-                        </p>
+                        </div>
                       ) : (
                         <ul className="space-y-3">
                           {safeArray(obj.key_results).map((kr) => {
-                            const edit = krEdits[kr.id] ?? {
-                              status: kr.status,
-                              progress: clampProgress(kr.progress ?? 0),
-                            };
-                            const s = statusLabel(edit.status);
+                            const edit = krEdits[kr.id] ?? { progress: clampProgress(kr.progress ?? 0) };
+                            const autoStatus = statusFromProgress(edit.progress);
+                            const s = statusLabel(autoStatus);
+
+                            // ✅ Same "Comments button UI" as CEO (outline btn + count + latest + loader)
+                            const notesState = notesByKrId[kr.id];
+                            const isNotesLoading = !!notesState?.loading;
+                            const isNotesLoaded = !!notesState?.loaded;
+                            const commentsCount = isNotesLoaded ? notesState.items.length : undefined;
+                            const latest = isNotesLoaded && notesState.items.length > 0 ? notesState.items[0] : undefined;
 
                             return (
-                              <li
-                                key={kr.id}
-                                className="rounded-md border border-border p-4 space-y-3"
-                              >
-                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                  <div className="space-y-1">
-                                    <div className="text-sm font-semibold">{kr.title}</div>
+                              <li key={kr.id} className={`rounded-2xl ${GLASS_SUB} p-4 space-y-3`}>
+                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                  <div className="min-w-0 space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-sm font-semibold truncate">{kr.title}</div>
+                                      <Pill tone={statusTone(autoStatus)}>{s.text}</Pill>
+                                    </div>
 
                                     <div className={`text-xs ${s.cls}`}>
-                                      {s.text} • {clampProgress(edit.progress)}% • Weight:{" "}
-                                      {kr.weight ?? 1}
+                                      {clampProgress(edit.progress)}% • Weight:{" "}
+                                      <span className="font-medium text-foreground">{kr.weight ?? 1}</span>
+                                    </div>
+
+                                    <div className="pt-2">
+                                      <ProgressBar value={edit.progress} />
+                                    </div>
+
+                                    {/* ✅ Comments UI (same pattern as CompanyOKRs) */}
+                                    <div className="mt-3 flex items-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => openKrModal(kr, obj.title)}
+                                      >
+                                        <MessageSquare className="h-4 w-4 mr-2" />
+                                        Comments{typeof commentsCount === "number" && commentsCount > 0 ? ` (${commentsCount})` : ""}
+                                      </Button>
+
+                                      {isNotesLoading ? (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-2">
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                          loading…
+                                        </span>
+                                      ) : isNotesLoaded ? (
+                                        latest ? (
+                                          <span className="text-xs text-muted-foreground truncate max-w-[420px]">
+                                            Latest: {latest.note}
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground">No comments yet</span>
+                                        )
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground">Click to load</span>
+                                      )}
                                     </div>
                                   </div>
 
@@ -947,73 +800,44 @@ export default function TeamLeaderOKRs() {
                                   </Button>
                                 </div>
 
-                                {/* Status + Progress controls */}
+                                {/* Controls */}
                                 <div className="grid gap-3 sm:grid-cols-6">
-                                  <div className="sm:col-span-2">
-                                    <label className="text-xs text-muted-foreground">Status</label>
-                                    <select
-                                      className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-                                      value={edit.status}
-                                      onChange={(e) =>
-                                        updateKR(kr.id, {
-                                          status: e.target.value as KRStatus,
-                                        })
-                                      }
-                                    >
-                                      <option value="not_started">Not Started</option>
-                                      <option value="in_progress">In Progress</option>
-                                      <option value="completed">Completed</option>
-                                    </select>
+                                  <div className="sm:col-span-2 space-y-1">
+                                    <div className="text-xs text-muted-foreground">Status</div>
+                                    <Select value={autoStatus} onValueChange={() => {}}>
+                                      <SelectTrigger className="h-10" disabled>
+                                        <SelectValue placeholder="Status" />
+                                      </SelectTrigger>
+                                      <SelectContent className="border-border/60 bg-popover/90 text-popover-foreground backdrop-blur-xl">
+                                        <SelectItem value="not_started">Not Started</SelectItem>
+                                        <SelectItem value="in_progress">In Progress</SelectItem>
+                                        <SelectItem value="completed">Completed</SelectItem>
+                                      </SelectContent>
+                                    </Select>
                                   </div>
 
-                                  <div className="sm:col-span-2">
-                                    <label className="text-xs text-muted-foreground">
-                                      Progress (0–100)
-                                    </label>
+                                  <div className="sm:col-span-2 space-y-1">
+                                    <div className="text-xs text-muted-foreground">Progress (0–100)</div>
                                     <Input
-                                      className="mt-1"
                                       type="number"
                                       min={0}
                                       max={100}
                                       value={edit.progress}
-                                      onChange={(e) =>
-                                        updateKR(kr.id, {
-                                          progress: clampProgress(Number(e.target.value)),
-                                        })
-                                      }
+                                      onChange={(e) => updateKRProgress(kr.id, Number(e.target.value))}
                                     />
                                   </div>
 
-                                  <div className="sm:col-span-2">
-                                    <label className="text-xs text-muted-foreground">Slider</label>
-                                    <div className="mt-3">
-                                      <input
-                                        type="range"
-                                        min={0}
-                                        max={100}
-                                        value={clampProgress(edit.progress)}
-                                        onChange={(e) =>
-                                          updateKR(kr.id, {
-                                            progress: clampProgress(Number(e.target.value)),
-                                          })
-                                        }
-                                        className="w-full"
-                                      />
-                                    </div>
+                                  <div className="sm:col-span-2 space-y-1">
+                                    <div className="text-xs text-muted-foreground">Slider</div>
+                                    <input
+                                      type="range"
+                                      min={0}
+                                      max={100}
+                                      value={clampProgress(edit.progress)}
+                                      onChange={(e) => updateKRProgress(kr.id, Number(e.target.value))}
+                                      className="w-full accent-primary"
+                                    />
                                   </div>
-                                </div>
-
-                                {/* Progress bar preview */}
-                                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                                  <div
-                                    className="h-2 rounded-full bg-primary"
-                                    style={{
-                                      width: `${Math.min(
-                                        100,
-                                        Math.max(0, clampProgress(edit.progress))
-                                      )}%`,
-                                    }}
-                                  />
                                 </div>
                               </li>
                             );
@@ -1022,19 +846,19 @@ export default function TeamLeaderOKRs() {
                       )}
                     </div>
 
-                    {/* ✅ Add KR (team leader) */}
-                    <div className="rounded-md border border-border p-3 space-y-3">
-                      <div className="text-sm font-medium">Add Key Result</div>
+                    {/* Add KR */}
+                    <div className={`rounded-2xl ${GLASS_SUB} p-4 space-y-3`}>
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-medium">Add Key Result</div>
+                        <Pill>Max total weight ≤ 100</Pill>
+                      </div>
 
                       <div className="grid gap-2 sm:grid-cols-7">
                         <div className="sm:col-span-4">
                           <Input
                             value={krDraftByObjective[obj.id] ?? ""}
                             onChange={(e) =>
-                              setKrDraftByObjective((prev) => ({
-                                ...prev,
-                                [obj.id]: e.target.value,
-                              }))
+                              setKrDraftByObjective((prev) => ({ ...prev, [obj.id]: e.target.value }))
                             }
                             placeholder="Key result title..."
                           />
@@ -1057,11 +881,7 @@ export default function TeamLeaderOKRs() {
                         </div>
 
                         <div className="sm:col-span-1">
-                          <Button
-                            className="w-full"
-                            onClick={() => addKeyResult(obj.id)}
-                            disabled={isSaving}
-                          >
+                          <Button className="w-full" onClick={() => addKeyResult(obj.id)} disabled={isSaving}>
                             <Plus className="h-4 w-4 mr-2" />
                             Add
                           </Button>
@@ -1082,4 +902,3 @@ export default function TeamLeaderOKRs() {
     </div>
   );
 }
-
