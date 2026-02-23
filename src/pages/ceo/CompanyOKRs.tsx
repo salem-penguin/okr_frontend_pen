@@ -1309,11 +1309,18 @@
 //   );
 // }
 // src/pages/ceo/CompanyOKRs.tsx
+// src/pages/ceo/CompanyOKRs.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/shared/LoadingState";
@@ -1337,143 +1344,169 @@ import {
 } from "lucide-react";
 
 // --------------------
-// Updates (CEO comments)
+// Types (interfaces instead of type aliases to avoid TSX generic confusion)
 // --------------------
-type KRUpdateItem = {
+type KRStatus = "not_started" | "in_progress" | "completed";
+
+interface KRAuthor {
+  id: string;
+  name: string;
+  email: string;
+}
+
+interface KRTeam {
+  id: string;
+  name: string;
+}
+
+interface KRUpdateItem {
   id: string;
   kr_id: string;
   kr_title: string;
   objective_id: string;
   objective_title: string;
-  team: { id: string; name: string } | null;
+  team: KRTeam | null;
   week_id: string;
   week_label: string | null;
   note: string;
-  meta: any;
+  meta: unknown;
   created_at: string;
-  author: { id: string; name: string; email: string } | null;
-};
+  author: KRAuthor | null;
+}
 
-type CompanyKRUpdatesResponse = { items: KRUpdateItem[]; count: number };
-
-// --------------------
-// Types
-// --------------------
-type KRStatus = "not_started" | "in_progress" | "completed";
-
-type KR = {
+interface KR {
   id: string;
   title: string;
   status: KRStatus;
   progress: number;
   weight: number;
-};
+}
 
-type ObjectiveTimeline = {
+interface ObjectiveTimeline {
   timeline_start: string;
   timeline_end: string;
   is_expired: boolean;
   days_remaining: number;
   needs_extension_prompt: boolean;
-};
+}
 
-type Objective = {
+interface Objective {
   id: string;
   title: string;
   progress: number;
-  parent_id?: string | null;
-  parent_weight?: number | null;
+  parent_id: string | null | undefined;
+  parent_weight: number | null | undefined;
   key_results: KR[];
-  timeline?: ObjectiveTimeline;
-};
+  timeline: ObjectiveTimeline | undefined;
+}
 
-type TeamBlock = {
+interface TeamBlock {
   team_id: string | null;
   team_name: string;
   objectives: Objective[];
-};
+}
 
-type CurrentOKRsResponse = {
-  quarter: {
-    quarter_id: string;
-    start_date: string;
-    end_date: string;
-    seconds_remaining: number;
-  };
-  teams: TeamBlock[];
-};
-
-type TeamOption = { id: string; name: string };
-type TeamsResponse = { items: TeamOption[]; count: number };
-
-type CompanyLevelObjectiveOption = { id: string; title: string };
-type CompanyLevelObjectivesResponse = {
-  items: CompanyLevelObjectiveOption[];
-  count: number;
-};
-
-type CurrentWeekResponse = {
-  week_id: string;
+interface QuarterInfo {
+  quarter_id: string;
   start_date: string;
   end_date: string;
-  display_label: string;
-};
+  seconds_remaining: number;
+}
 
-type CompanyOKRChild = {
+interface CurrentOKRsResponse {
+  quarter: QuarterInfo;
+  teams: TeamBlock[];
+}
+
+interface TeamOption {
+  id: string;
+  name: string;
+}
+
+interface CompanyLevelObjectiveOption {
+  id: string;
+  title: string;
+}
+
+interface CompanyOKRChild {
   id: string;
   title: string;
   team_name: string | null;
   progress: number;
-  parent_weight?: number;
-};
+  parent_weight: number | undefined;
+}
 
-type CompanyLevelOKR = {
+interface CompanyLevelOKR {
   id: string;
   title: string;
   progress: number;
   children: CompanyOKRChild[];
-};
+}
 
-type CompanyLevelOKRsResponse = {
-  items: CompanyLevelOKR[];
-  count: number;
-};
+interface TlDraft {
+  start: string;
+  end: string;
+}
 
 // --------------------
-// Helpers
+// Helpers — all fully typed, no generic arrow functions in TSX scope
 // --------------------
-function formatDuration(seconds: number) {
-  const s = Math.max(0, seconds);
-  const days = Math.floor(s / 86400);
-  const hours = Math.floor((s % 86400) / 3600);
-  const mins = Math.floor((s % 3600) / 60);
+function formatDuration(seconds: number): string {
+  const clamped = Math.max(0, seconds);
+  const days = Math.floor(clamped / 86400);
+  const hours = Math.floor((clamped % 86400) / 3600);
+  const mins = Math.floor((clamped % 3600) / 60);
   return `${days}d ${hours}h ${mins}m`;
 }
 
-function safeArray<T>(x: T[] | undefined | null): T[] {
+function safeArrKR(x: KR[] | undefined | null): KR[] {
   return Array.isArray(x) ? x : [];
 }
 
-function clamp01(x: number) {
+function safeArrObjective(x: Objective[] | undefined | null): Objective[] {
+  return Array.isArray(x) ? x : [];
+}
+
+function safeArrChild(x: CompanyOKRChild[] | undefined | null): CompanyOKRChild[] {
+  return Array.isArray(x) ? x : [];
+}
+
+function safeArrKRUpdate(x: KRUpdateItem[] | undefined | null): KRUpdateItem[] {
+  return Array.isArray(x) ? x : [];
+}
+
+function safeArrTeam(x: TeamBlock[] | undefined | null): TeamBlock[] {
+  return Array.isArray(x) ? x : [];
+}
+
+function safeArrCLO(
+  x: CompanyLevelOKR[] | undefined | null
+): CompanyLevelOKR[] {
+  return Array.isArray(x) ? x : [];
+}
+
+function clampProgress(x: number): number {
   return Math.min(100, Math.max(0, Number(x || 0)));
 }
 
 function krStatusFromProgress(p: number): KRStatus {
-  const v = clamp01(p);
+  const v = clampProgress(p);
   if (v >= 100) return "completed";
   if (v > 0) return "in_progress";
   return "not_started";
 }
 
-function statusLabel(s: KRStatus) {
-  if (s === "completed")
+function getStatusLabel(s: KRStatus): { text: string; cls: string } {
+  if (s === "completed") {
     return { text: "Completed", cls: "text-emerald-600 dark:text-emerald-400" };
-  if (s === "in_progress")
+  }
+  if (s === "in_progress") {
     return { text: "In Progress", cls: "text-amber-700 dark:text-amber-400" };
+  }
   return { text: "Not Started", cls: "text-muted-foreground" };
 }
 
-function toDateInputValue(iso?: string) {
+function toDateInput(iso: string | undefined): string {
   if (!iso) return "";
   return iso.slice(0, 10);
 }
@@ -1488,19 +1521,27 @@ const GLASS =
 
 const GLASS_SUB = "border border-border/60 bg-background/40 backdrop-blur";
 
-function Pill({
-  children,
-  tone = "neutral",
-}: {
+const COMPANY_SENTINEL = "__company__";
+
+// --------------------
+// Sub-components
+// --------------------
+interface PillProps {
   children: React.ReactNode;
   tone?: "neutral" | "amber" | "emerald";
-}) {
-  const toneCls =
-    tone === "emerald"
-      ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-300"
-      : tone === "amber"
-      ? "bg-amber-500/10 text-amber-800 border-amber-500/20 dark:text-amber-300"
-      : "bg-muted/40 text-muted-foreground border-border/60";
+}
+
+function Pill({ children, tone = "neutral" }: PillProps): React.ReactElement {
+  let toneCls: string;
+  if (tone === "emerald") {
+    toneCls =
+      "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-300";
+  } else if (tone === "amber") {
+    toneCls =
+      "bg-amber-500/10 text-amber-800 border-amber-500/20 dark:text-amber-300";
+  } else {
+    toneCls = "bg-muted/40 text-muted-foreground border-border/60";
+  }
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${toneCls}`}
@@ -1510,8 +1551,12 @@ function Pill({
   );
 }
 
-function ProgressBar({ value }: { value: number }) {
-  const v = clamp01(value);
+interface ProgressBarProps {
+  value: number;
+}
+
+function ProgressBar({ value }: ProgressBarProps): React.ReactElement {
+  const v = clampProgress(value);
   return (
     <div className="h-1.5 w-full rounded-full bg-muted/50 overflow-hidden">
       <div
@@ -1522,19 +1567,20 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-// Radix Select cannot use empty string as item value
-const COMPANY_SENTINEL = "__company__";
-
-export default function CompanyOKRs() {
+// --------------------
+// Main Component
+// --------------------
+export default function CompanyOKRs(): React.ReactElement {
   const { user } = useAuth();
-  const isCEO = user?.role === "ceo";
+  const isCEO: boolean = user?.role === "ceo";
 
-  // CEO comments cache (all KRs)
   const [krUpdatesByKrId, setKrUpdatesByKrId] = useState<
     Record<string, KRUpdateItem[]>
   >({});
-  const [isLoadingKrUpdates, setIsLoadingKrUpdates] = useState(false);
-  const [activeKr, setActiveKr] = useState<{ id: string; title: string } | null>(null);
+  const [isLoadingKrUpdates, setIsLoadingKrUpdates] = useState<boolean>(false);
+  const [activeKr, setActiveKr] = useState<{ id: string; title: string } | null>(
+    null
+  );
 
   const [data, setData] = useState<CurrentOKRsResponse | null>(null);
   const [teamsOptions, setTeamsOptions] = useState<TeamOption[]>([]);
@@ -1544,33 +1590,27 @@ export default function CompanyOKRs() {
   const [companyLevelProgress, setCompanyLevelProgress] = useState<
     CompanyLevelOKR[]
   >([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [openTeams, setOpenTeams] = useState<Record<string, boolean>>({});
 
-  // Add objective
-  const [newObjectiveTitle, setNewObjectiveTitle] = useState("");
-  const [selectedTeamId, setSelectedTeamId] = useState(COMPANY_SENTINEL);
-  const [selectedParentId, setSelectedParentId] = useState("");
-  const [parentWeight, setParentWeight] = useState(10);
+  const [newObjectiveTitle, setNewObjectiveTitle] = useState<string>("");
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(COMPANY_SENTINEL);
+  const [selectedParentId, setSelectedParentId] = useState<string>("");
+  const [parentWeight, setParentWeight] = useState<number>(10);
 
-  // Add KR
   const [krDraftByObjective, setKrDraftByObjective] = useState<
     Record<string, string>
   >({});
   const [krWeightByObjective, setKrWeightByObjective] = useState<
     Record<string, number>
   >({});
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  // Timeline drafts
-  const [tlDraftByObj, setTlDraftByObj] = useState<
-    Record<string, { start: string; end: string }>
-  >({});
+  const [tlDraftByObj, setTlDraftByObj] = useState<Record<string, TlDraft>>({});
   const [isSavingTimelineByObj, setIsSavingTimelineByObj] = useState<
     Record<string, boolean>
   >({});
 
-  // Parent weight drafts
   const [parentWeightDraftByObj, setParentWeightDraftByObj] = useState<
     Record<string, number>
   >({});
@@ -1578,7 +1618,6 @@ export default function CompanyOKRs() {
     Record<string, boolean>
   >({});
 
-  // KR weight drafts
   const [krWeightDraftById, setKrWeightDraftById] = useState<
     Record<string, number>
   >({});
@@ -1586,102 +1625,22 @@ export default function CompanyOKRs() {
     Record<string, boolean>
   >({});
 
-  // UX controls
-  const [query, setQuery] = useState("");
-  const [onlyAttention, setOnlyAttention] = useState(false);
+  const [query, setQuery] = useState<string>("");
+  const [onlyAttention, setOnlyAttention] = useState<boolean>(false);
   const [openObjectiveById, setOpenObjectiveById] = useState<
     Record<string, boolean>
   >({});
 
-  const isCompanyMode = selectedTeamId === COMPANY_SENTINEL;
+  const isCompanyMode: boolean = selectedTeamId === COMPANY_SENTINEL;
 
-  const loadAllKrUpdates = async () => {
-    setIsLoadingKrUpdates(true);
-    try {
-      const res: any = await apiFetch("/okrs/company/key-results/updates?limit=500");
-      const rawItems = safeArray(res?.items ?? res?.data?.items);
-      const items: KRUpdateItem[] = rawItems
-        .map((it: any) => ({
-          ...it,
-          id: String(it?.id ?? ""),
-          kr_id: String(
-            it?.kr_id ?? it?.key_result_id ?? it?.keyResultId ?? ""
-          ).trim(),
-          note: String(it?.note ?? it?.comment ?? it?.message ?? ""),
-          created_at: String(it?.created_at ?? it?.createdAt ?? ""),
-        }))
-        .filter((it: KRUpdateItem) => !!it.kr_id);
-
-      items.sort((a, b) => {
-        const ta = Date.parse(a.created_at || "");
-        const tb = Date.parse(b.created_at || "");
-        return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
-      });
-
-      const map: Record<string, KRUpdateItem[]> = {};
-      for (const it of items) {
-        const key = String(it.kr_id);
-        (map[key] ||= []).push(it);
-      }
-      setKrUpdatesByKrId(map);
-    } catch (e) {
-      console.error("Failed to load KR comments:", e);
-      setKrUpdatesByKrId({});
-      toast.error("Failed to load KR comments");
-    } finally {
-      setIsLoadingKrUpdates(false);
-    }
-  };
-
-  const parentTitleById = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const p of companyLevelOptions) m[p.id] = p.title;
-    return m;
-  }, [companyLevelOptions]);
-
-  const parentProgressById = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const p of companyLevelProgress) m[p.id] = clamp01(p.progress);
-    return m;
-  }, [companyLevelProgress]);
-
-  const childrenByParentId = useMemo(() => {
-    const m: Record<string, CompanyOKRChild[]> = {};
-    for (const p of companyLevelProgress) m[p.id] = safeArray(p.children);
-    return m;
-  }, [companyLevelProgress]);
-
-  const remaining = useMemo(
-    () => formatDuration(data?.quarter.seconds_remaining ?? 0),
-    [data?.quarter.seconds_remaining]
-  );
-
-  const summary = useMemo(() => {
-    const parents = companyLevelOptions.length;
-    const children = companyLevelProgress.reduce(
-      (acc, p) => acc + safeArray(p.children).length,
-      0
+  // ✅ KEY FIX: Always inject a synthetic "unassigned" block so parent OKRs always render
+  const teams: TeamBlock[] = useMemo((): TeamBlock[] => {
+    const raw: TeamBlock[] = Array.isArray(data?.teams)
+      ? (data as CurrentOKRsResponse).teams
+      : [];
+    const hasUnassigned: boolean = raw.some(
+      (t: TeamBlock) => t.team_id === null
     );
-    const teams = safeArray(data?.teams).filter((t) => !!t.team_id).length;
-    let attention = 0;
-    for (const t of safeArray(data?.teams)) {
-      for (const o of safeArray(t.objectives)) {
-        const tl = o.timeline;
-        const needs =
-          (tl?.is_expired ?? false) ||
-          (tl?.needs_extension_prompt ?? false) ||
-          clamp01(o.progress) < 20;
-        if (needs) attention += 1;
-      }
-    }
-    return { parents, children, teams, attention };
-  }, [companyLevelOptions.length, companyLevelProgress, data?.teams]);
-
-  // ✅ KEY FIX: Always inject a synthetic "unassigned" block when company-level
-  // objectives exist, regardless of whether the backend returned a null-team block.
-  const teams = useMemo(() => {
-    const raw = safeArray(data?.teams);
-    const hasUnassigned = raw.some((t) => !t.team_id);
     if (!hasUnassigned && companyLevelOptions.length > 0) {
       const syntheticBlock: TeamBlock = {
         team_id: null,
@@ -1691,75 +1650,232 @@ export default function CompanyOKRs() {
       return [syntheticBlock, ...raw];
     }
     return raw;
-  }, [data?.teams, companyLevelOptions]);
+  }, [data, companyLevelOptions]);
 
-  const load = async () => {
+  const parentTitleById: Record<string, string> = useMemo((): Record<
+    string,
+    string
+  > => {
+    const m: Record<string, string> = {};
+    for (const p of companyLevelOptions) {
+      m[p.id] = p.title;
+    }
+    return m;
+  }, [companyLevelOptions]);
+
+  const parentProgressById: Record<string, number> = useMemo((): Record<
+    string,
+    number
+  > => {
+    const m: Record<string, number> = {};
+    for (const p of companyLevelProgress) {
+      m[p.id] = clampProgress(p.progress);
+    }
+    return m;
+  }, [companyLevelProgress]);
+
+  const childrenByParentId: Record<
+    string,
+    CompanyOKRChild[]
+  > = useMemo((): Record<string, CompanyOKRChild[]> => {
+    const m: Record<string, CompanyOKRChild[]> = {};
+    for (const p of companyLevelProgress) {
+      m[p.id] = safeArrChild(p.children);
+    }
+    return m;
+  }, [companyLevelProgress]);
+
+  const remaining: string = useMemo((): string => {
+    return formatDuration(data?.quarter.seconds_remaining ?? 0);
+  }, [data]);
+
+  const summary = useMemo(() => {
+    const parents: number = companyLevelOptions.length;
+    const children: number = safeArrCLO(companyLevelProgress).reduce(
+      (acc: number, p: CompanyLevelOKR) => acc + safeArrChild(p.children).length,
+      0
+    );
+    const teamCount: number = safeArrTeam(data?.teams).filter(
+      (t: TeamBlock) => t.team_id !== null
+    ).length;
+    let attention: number = 0;
+    for (const t of safeArrTeam(data?.teams)) {
+      for (const o of safeArrObjective(t.objectives)) {
+        const tl = o.timeline;
+        const needs: boolean =
+          (tl?.is_expired === true) ||
+          (tl?.needs_extension_prompt === true) ||
+          clampProgress(o.progress) < 20;
+        if (needs) attention += 1;
+      }
+    }
+    return { parents, children, teams: teamCount, attention };
+  }, [companyLevelOptions, companyLevelProgress, data]);
+
+  // --------------------
+  // Data loading
+  // --------------------
+  async function loadAllKrUpdates(): Promise<void> {
+    setIsLoadingKrUpdates(true);
+    try {
+      const res = (await apiFetch(
+        "/okrs/company/key-results/updates?limit=500"
+      )) as Record<string, unknown>;
+
+      const rawItems: unknown[] = Array.isArray(res?.items)
+        ? (res.items as unknown[])
+        : Array.isArray((res?.data as Record<string, unknown>)?.items)
+        ? ((res.data as Record<string, unknown>).items as unknown[])
+        : [];
+
+      const items: KRUpdateItem[] = rawItems
+        .map((it: unknown) => {
+          const item = it as Record<string, unknown>;
+          const krId = String(
+            item?.kr_id ?? item?.key_result_id ?? item?.keyResultId ?? ""
+          ).trim();
+          const result: KRUpdateItem = {
+            id: String(item?.id ?? ""),
+            kr_id: krId,
+            kr_title: String(item?.kr_title ?? ""),
+            objective_id: String(item?.objective_id ?? ""),
+            objective_title: String(item?.objective_title ?? ""),
+            team: (item?.team as KRTeam | null) ?? null,
+            week_id: String(item?.week_id ?? ""),
+            week_label: item?.week_label ? String(item.week_label) : null,
+            note: String(item?.note ?? item?.comment ?? item?.message ?? ""),
+            meta: item?.meta ?? null,
+            created_at: String(item?.created_at ?? item?.createdAt ?? ""),
+            author: (item?.author as KRAuthor | null) ?? null,
+          };
+          return result;
+        })
+        .filter((it: KRUpdateItem) => it.kr_id.length > 0);
+
+      items.sort((a: KRUpdateItem, b: KRUpdateItem) => {
+        const ta: number = Date.parse(a.created_at);
+        const tb: number = Date.parse(b.created_at);
+        return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+      });
+
+      const map: Record<string, KRUpdateItem[]> = {};
+      for (const it of items) {
+        const key: string = it.kr_id;
+        if (!map[key]) map[key] = [];
+        map[key].push(it);
+      }
+      setKrUpdatesByKrId(map);
+    } catch (err) {
+      console.error("Failed to load KR comments:", err);
+      setKrUpdatesByKrId({});
+      toast.error("Failed to load KR comments");
+    } finally {
+      setIsLoadingKrUpdates(false);
+    }
+  }
+
+  async function load(): Promise<void> {
     setIsLoading(true);
     try {
-      const res = await apiFetch("/okrs/company/current");
-      const normalized: CurrentOKRsResponse = {
-        quarter: res.quarter,
-        teams: safeArray(res.teams).map((t) => ({
-          ...t,
-          objectives: safeArray(t.objectives).map((o: any) => ({
-            ...o,
-            parent_id: o?.parent_id ?? o?.parent_company_level_objective_id ?? null,
-            parent_weight: o?.parent_weight ?? 0,
-            key_results: safeArray(o.key_results).map((kr: any) => ({
-              ...kr,
-              id: String(
-                kr?.id ?? kr?.kr_id ?? kr?.key_result_id ?? kr?.keyResultId ?? ""
-              ).trim(),
-              progress: kr?.progress ?? 0,
-              weight: kr?.weight ?? 1,
-            })),
-          })),
-        })),
-      };
-      setData(normalized);
+      const res = (await apiFetch("/okrs/company/current")) as Record<
+        string,
+        unknown
+      >;
 
+      const rawTeams: TeamBlock[] = safeArrTeam(
+        res.teams as TeamBlock[] | null
+      );
+
+      const normalizedTeams: TeamBlock[] = rawTeams.map(
+        (t: TeamBlock): TeamBlock => {
+          const rawObjs = safeArrObjective(t.objectives);
+          const objectives: Objective[] = rawObjs.map(
+            (o: Objective): Objective => {
+              const oAny = o as unknown as Record<string, unknown>;
+              const parentId =
+                (oAny.parent_id ??
+                  oAny.parent_company_level_objective_id ??
+                  null) as string | null;
+              const krs: KR[] = safeArrKR(o.key_results).map(
+                (kr: KR): KR => {
+                  const krAny = kr as unknown as Record<string, unknown>;
+                  return {
+                    id: String(
+                      krAny.id ??
+                        krAny.kr_id ??
+                        krAny.key_result_id ??
+                        krAny.keyResultId ??
+                        ""
+                    ).trim(),
+                    title: String(krAny.title ?? ""),
+                    status: (krAny.status as KRStatus) ?? "not_started",
+                    progress: Number(krAny.progress ?? 0),
+                    weight: Number(krAny.weight ?? 1),
+                  };
+                }
+              );
+              return {
+                id: o.id,
+                title: o.title,
+                progress: o.progress,
+                parent_id: parentId,
+                parent_weight: Number(oAny.parent_weight ?? 0),
+                key_results: krs,
+                timeline: o.timeline,
+              };
+            }
+          );
+          return { ...t, objectives };
+        }
+      );
+
+      const normalized: CurrentOKRsResponse = {
+        quarter: res.quarter as QuarterInfo,
+        teams: normalizedTeams,
+      };
+
+      setData(normalized);
       await loadAllKrUpdates();
 
       try {
-        const cw = await apiFetch("/weeks/current");
-        const lvl = await apiFetch(
+        const cw = (await apiFetch("/weeks/current")) as { week_id: string };
+        const lvl = (await apiFetch(
           `/okrs/company/level-progress?week_id=${encodeURIComponent(cw.week_id)}`
-        );
-        setCompanyLevelProgress(safeArray(lvl.items));
-      } catch (e) {
-        console.warn("Failed to load company-level progress", e);
+        )) as { items: CompanyLevelOKR[] };
+        setCompanyLevelProgress(safeArrCLO(lvl.items));
+      } catch (innerErr) {
+        console.warn("Failed to load company-level progress", innerErr);
         setCompanyLevelProgress([]);
       }
 
-      setOpenTeams((prev) => {
+      setOpenTeams((prev: Record<string, boolean>) => {
         const next: Record<string, boolean> = { ...prev };
-        // always open the unassigned block
         if (typeof next["unassigned"] !== "boolean") next["unassigned"] = true;
         for (const t of normalized.teams) {
-          const k = t.team_id ?? "unassigned";
+          const k: string = t.team_id ?? "unassigned";
           if (typeof next[k] !== "boolean") next[k] = true;
         }
         return next;
       });
 
-      setOpenObjectiveById((prev) => {
-        const next = { ...prev };
+      setOpenObjectiveById((prev: Record<string, boolean>) => {
+        const next: Record<string, boolean> = { ...prev };
         for (const t of normalized.teams) {
-          for (const o of safeArray(t.objectives)) {
+          for (const o of safeArrObjective(t.objectives)) {
             if (typeof next[o.id] !== "boolean") next[o.id] = true;
           }
         }
         return next;
       });
 
-      setTlDraftByObj((prev) => {
-        const next = { ...prev };
-        for (const team of normalized.teams) {
-          for (const obj of safeArray(team.objectives)) {
-            if (!next[obj.id]) {
-              next[obj.id] = {
-                start: toDateInputValue(obj.timeline?.timeline_start),
-                end: toDateInputValue(obj.timeline?.timeline_end),
+      setTlDraftByObj((prev: Record<string, TlDraft>) => {
+        const next: Record<string, TlDraft> = { ...prev };
+        for (const t of normalized.teams) {
+          for (const o of safeArrObjective(t.objectives)) {
+            if (!next[o.id]) {
+              next[o.id] = {
+                start: toDateInput(o.timeline?.timeline_start),
+                end: toDateInput(o.timeline?.timeline_end),
               };
             }
           }
@@ -1767,70 +1883,74 @@ export default function CompanyOKRs() {
         return next;
       });
 
-      setKrWeightByObjective((prev) => {
-        const next = { ...prev };
-        for (const team of normalized.teams) {
-          for (const obj of safeArray(team.objectives)) {
-            if (typeof next[obj.id] !== "number") next[obj.id] = 1;
+      setKrWeightByObjective((prev: Record<string, number>) => {
+        const next: Record<string, number> = { ...prev };
+        for (const t of normalized.teams) {
+          for (const o of safeArrObjective(t.objectives)) {
+            if (typeof next[o.id] !== "number") next[o.id] = 1;
           }
         }
         return next;
       });
 
-      setParentWeightDraftByObj((prev) => {
-        const next = { ...prev };
-        for (const team of normalized.teams) {
-          for (const obj of safeArray(team.objectives)) {
-            const serverW = Number(obj.parent_weight ?? 0);
-            if (typeof next[obj.id] !== "number") next[obj.id] = serverW;
-          }
-        }
-        return next;
-      });
-
-      setKrWeightDraftById((prev) => {
-        const next = { ...prev };
-        for (const team of normalized.teams) {
-          for (const obj of safeArray(team.objectives)) {
-            for (const kr of safeArray(obj.key_results)) {
-              const serverW = Number(kr.weight ?? 1);
-              if (typeof next[kr.id] !== "number") next[kr.id] = serverW;
+      setParentWeightDraftByObj((prev: Record<string, number>) => {
+        const next: Record<string, number> = { ...prev };
+        for (const t of normalized.teams) {
+          for (const o of safeArrObjective(t.objectives)) {
+            if (typeof next[o.id] !== "number") {
+              next[o.id] = Number(o.parent_weight ?? 0);
             }
           }
         }
         return next;
       });
-    } catch (e) {
-      console.error(e);
+
+      setKrWeightDraftById((prev: Record<string, number>) => {
+        const next: Record<string, number> = { ...prev };
+        for (const t of normalized.teams) {
+          for (const o of safeArrObjective(t.objectives)) {
+            for (const kr of safeArrKR(o.key_results)) {
+              if (typeof next[kr.id] !== "number") {
+                next[kr.id] = Number(kr.weight ?? 1);
+              }
+            }
+          }
+        }
+        return next;
+      });
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to load OKRs");
       setData(null);
       setCompanyLevelProgress([]);
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
-  const loadTeams = async () => {
+  async function loadTeams(): Promise<void> {
     try {
-      const res = await apiFetch("/okrs/teams");
-      setTeamsOptions(safeArray(res.items));
-    } catch (e) {
-      console.error(e);
+      const res = (await apiFetch("/okrs/teams")) as { items: TeamOption[] };
+      setTeamsOptions(Array.isArray(res.items) ? res.items : []);
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to load teams");
       setTeamsOptions([]);
     }
-  };
+  }
 
-  const loadCompanyLevel = async () => {
+  async function loadCompanyLevel(): Promise<void> {
     try {
-      const res = await apiFetch("/okrs/company/level-objectives");
-      setCompanyLevelOptions(safeArray(res.items));
-    } catch (e) {
-      console.error(e);
+      const res = (await apiFetch("/okrs/company/level-objectives")) as {
+        items: CompanyLevelObjectiveOption[];
+      };
+      setCompanyLevelOptions(Array.isArray(res.items) ? res.items : []);
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to load company-level OKRs");
       setCompanyLevelOptions([]);
     }
-  };
+  }
 
   useEffect(() => {
     load();
@@ -1853,8 +1973,8 @@ export default function CompanyOKRs() {
   }, [activeKr?.id]);
 
   useEffect(() => {
-    const t = setInterval(() => {
-      setData((prev) => {
+    const timer = setInterval(() => {
+      setData((prev: CurrentOKRsResponse | null) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -1868,13 +1988,19 @@ export default function CompanyOKRs() {
         };
       });
     }, 60_000);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, []);
 
-  const addObjective = async () => {
+  // --------------------
+  // Actions
+  // --------------------
+  async function addObjective(): Promise<void> {
     if (!isCEO) return;
-    const title = newObjectiveTitle.trim();
-    if (!title) return toast.error("Objective title is required");
+    const title: string = newObjectiveTitle.trim();
+    if (!title) {
+      toast.error("Objective title is required");
+      return;
+    }
 
     if (isCompanyMode) {
       setIsSaving(true);
@@ -1887,8 +2013,8 @@ export default function CompanyOKRs() {
         toast.success("Company-level objective added");
         await loadCompanyLevel();
         await load();
-      } catch (e) {
-        console.error(e);
+      } catch (err) {
+        console.error(err);
         toast.error("Failed to add company-level objective");
       } finally {
         setIsSaving(false);
@@ -1896,10 +2022,15 @@ export default function CompanyOKRs() {
       return;
     }
 
-    if (!selectedParentId) return toast.error("Parent company-level OKR is required");
-    const w = Number(parentWeight);
-    if (!Number.isFinite(w) || w < 1 || w > 100)
-      return toast.error("Parent weight must be between 1 and 100");
+    if (!selectedParentId) {
+      toast.error("Parent company-level OKR is required");
+      return;
+    }
+    const w: number = Number(parentWeight);
+    if (!Number.isFinite(w) || w < 1 || w > 100) {
+      toast.error("Parent weight must be between 1 and 100");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -1918,49 +2049,67 @@ export default function CompanyOKRs() {
       setParentWeight(10);
       toast.success("Team objective added");
       await load();
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to add team objective");
     } finally {
       setIsSaving(false);
     }
-  };
+  }
 
-  const addKeyResult = async (objectiveId: string) => {
+  async function addKeyResult(objectiveId: string): Promise<void> {
     if (!isCEO) return;
-    const title = (krDraftByObjective[objectiveId] || "").trim();
-    const weight = Number(krWeightByObjective[objectiveId] ?? 1);
-    if (!title) return toast.error("Key Result title is required");
-    if (!Number.isFinite(weight) || weight < 1 || weight > 100)
-      return toast.error("Weight must be between 1 and 100");
-
+    const title: string = (krDraftByObjective[objectiveId] || "").trim();
+    const weight: number = Number(krWeightByObjective[objectiveId] ?? 1);
+    if (!title) {
+      toast.error("Key Result title is required");
+      return;
+    }
+    if (!Number.isFinite(weight) || weight < 1 || weight > 100) {
+      toast.error("Weight must be between 1 and 100");
+      return;
+    }
     setIsSaving(true);
     try {
       await apiFetch("/okrs/company/key-results", {
         method: "POST",
         body: JSON.stringify({ objective_id: objectiveId, title, weight }),
       });
-      setKrDraftByObjective((prev) => ({ ...prev, [objectiveId]: "" }));
-      setKrWeightByObjective((prev) => ({ ...prev, [objectiveId]: 1 }));
+      setKrDraftByObjective((prev: Record<string, string>) => ({
+        ...prev,
+        [objectiveId]: "",
+      }));
+      setKrWeightByObjective((prev: Record<string, number>) => ({
+        ...prev,
+        [objectiveId]: 1,
+      }));
       toast.success("Key Result added");
       await load();
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to add key result");
     } finally {
       setIsSaving(false);
     }
-  };
+  }
 
-  const saveObjectiveTimeline = async (objectiveId: string) => {
+  async function saveObjectiveTimeline(objectiveId: string): Promise<void> {
     if (!isCEO) return;
-    const draft = tlDraftByObj[objectiveId];
-    const start = (draft?.start || "").trim();
-    const end = (draft?.end || "").trim();
-    if (!start || !end) return toast.error("Timeline start and end are required");
-    if (end < start) return toast.error("timeline_end must be >= timeline_start");
-
-    setIsSavingTimelineByObj((p) => ({ ...p, [objectiveId]: true }));
+    const draft: TlDraft = tlDraftByObj[objectiveId] || { start: "", end: "" };
+    const start: string = draft.start.trim();
+    const end: string = draft.end.trim();
+    if (!start || !end) {
+      toast.error("Timeline start and end are required");
+      return;
+    }
+    if (end < start) {
+      toast.error("timeline_end must be >= timeline_start");
+      return;
+    }
+    setIsSavingTimelineByObj((p: Record<string, boolean>) => ({
+      ...p,
+      [objectiveId]: true,
+    }));
     try {
       await apiFetch(`/okrs/company/objectives/${objectiveId}/timeline`, {
         method: "PATCH",
@@ -1968,21 +2117,31 @@ export default function CompanyOKRs() {
       });
       toast.success("Timeline updated");
       await load();
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to update timeline");
     } finally {
-      setIsSavingTimelineByObj((p) => ({ ...p, [objectiveId]: false }));
+      setIsSavingTimelineByObj((p: Record<string, boolean>) => ({
+        ...p,
+        [objectiveId]: false,
+      }));
     }
-  };
+  }
 
-  const saveObjectiveParentWeight = async (objectiveId: string, weight: number) => {
+  async function saveObjectiveParentWeight(
+    objectiveId: string,
+    weight: number
+  ): Promise<void> {
     if (!isCEO) return;
-    const w = Number(weight);
-    if (!Number.isFinite(w) || w < 1 || w > 100)
-      return toast.error("Parent weight must be between 1 and 100");
-
-    setIsSavingParentWeightByObj((p) => ({ ...p, [objectiveId]: true }));
+    const w: number = Number(weight);
+    if (!Number.isFinite(w) || w < 1 || w > 100) {
+      toast.error("Parent weight must be between 1 and 100");
+      return;
+    }
+    setIsSavingParentWeightByObj((p: Record<string, boolean>) => ({
+      ...p,
+      [objectiveId]: true,
+    }));
     try {
       await apiFetch("/okrs/company/objectives/parent-weight", {
         method: "PATCH",
@@ -1990,21 +2149,28 @@ export default function CompanyOKRs() {
       });
       toast.success("Parent weight updated");
       await load();
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to update parent weight");
     } finally {
-      setIsSavingParentWeightByObj((p) => ({ ...p, [objectiveId]: false }));
+      setIsSavingParentWeightByObj((p: Record<string, boolean>) => ({
+        ...p,
+        [objectiveId]: false,
+      }));
     }
-  };
+  }
 
-  const saveKRWeight = async (krId: string, weight: number) => {
+  async function saveKRWeight(krId: string, weight: number): Promise<void> {
     if (!isCEO) return;
-    const w = Number(weight);
-    if (!Number.isFinite(w) || w < 1 || w > 100)
-      return toast.error("KR weight must be between 1 and 100");
-
-    setIsSavingKrWeightById((p) => ({ ...p, [krId]: true }));
+    const w: number = Number(weight);
+    if (!Number.isFinite(w) || w < 1 || w > 100) {
+      toast.error("KR weight must be between 1 and 100");
+      return;
+    }
+    setIsSavingKrWeightById((p: Record<string, boolean>) => ({
+      ...p,
+      [krId]: true,
+    }));
     try {
       await apiFetch("/okrs/company/key-results/weight", {
         method: "PATCH",
@@ -2012,14 +2178,20 @@ export default function CompanyOKRs() {
       });
       toast.success("KR weight updated");
       await load();
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to update KR weight");
     } finally {
-      setIsSavingKrWeightById((p) => ({ ...p, [krId]: false }));
+      setIsSavingKrWeightById((p: Record<string, boolean>) => ({
+        ...p,
+        [krId]: false,
+      }));
     }
-  };
+  }
 
+  // --------------------
+  // Render guards
+  // --------------------
   if (!isCEO) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -2038,8 +2210,11 @@ export default function CompanyOKRs() {
     );
   }
 
-  const hasParents = companyLevelOptions.length > 0;
+  const hasParents: boolean = companyLevelOptions.length > 0;
 
+  // --------------------
+  // Render
+  // --------------------
   return (
     <div className="relative min-h-screen space-y-6 p-4 md:p-6">
       {/* Background accents */}
@@ -2079,7 +2254,7 @@ export default function CompanyOKRs() {
             <Button
               variant={onlyAttention ? "default" : "outline"}
               size="sm"
-              onClick={() => setOnlyAttention((p) => !p)}
+              onClick={() => setOnlyAttention((p: boolean) => !p)}
             >
               Attention
             </Button>
@@ -2090,7 +2265,9 @@ export default function CompanyOKRs() {
             value={query}
             className="max-w-sm"
             placeholder="Search objectives or key results..."
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setQuery(e.target.value)
+            }
           />
         </div>
       </div>
@@ -2100,23 +2277,25 @@ export default function CompanyOKRs() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Add new Objective</CardTitle>
           <CardDescription>
-            Create Company-level OKRs (parents) or Team OKRs (children). Team objectives
-            contribute to a parent via weight.
+            Create Company-level OKRs (parents) or Team OKRs (children). Team
+            objectives contribute to a parent via weight.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <Input
             value={newObjectiveTitle}
-            onChange={(e) => setNewObjectiveTitle(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setNewObjectiveTitle(e.target.value)
+            }
             placeholder="Objective title..."
           />
           <div className="flex flex-wrap gap-2">
             <Select
               value={selectedTeamId}
-              onValueChange={(v) => {
+              onValueChange={(v: string) => {
                 setSelectedTeamId(v);
                 if (v !== COMPANY_SENTINEL) {
-                  setSelectedParentId((prev) => prev || (companyLevelOptions[0]?.id ?? ""));
+                  setSelectedParentId(companyLevelOptions[0]?.id ?? "");
                 } else {
                   setSelectedParentId("");
                 }
@@ -2129,7 +2308,7 @@ export default function CompanyOKRs() {
                 <SelectItem value={COMPANY_SENTINEL}>
                   Company-level (Parent OKR)
                 </SelectItem>
-                {teamsOptions.map((t) => (
+                {teamsOptions.map((t: TeamOption) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
                   </SelectItem>
@@ -2138,31 +2317,35 @@ export default function CompanyOKRs() {
             </Select>
           </div>
 
-          {/* Parent + weight (team mode only) */}
           {!isCompanyMode ? (
-            <>
+            <div className="space-y-3">
               {!hasParents ? (
                 <p className="text-sm text-amber-600 dark:text-amber-400">
                   You must create at least one Company-level OKR first.
                 </p>
               ) : (
-                <>
+                <div className="space-y-3">
                   <div>
-                    <Select value={selectedParentId} onValueChange={setSelectedParentId}>
+                    <Select
+                      value={selectedParentId}
+                      onValueChange={setSelectedParentId}
+                    >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select parent company-level OKR…" />
                       </SelectTrigger>
                       <SelectContent>
-                        {companyLevelOptions.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.title}
-                          </SelectItem>
-                        ))}
+                        {companyLevelOptions.map(
+                          (p: CompanyLevelObjectiveOption) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.title}
+                            </SelectItem>
+                          )
+                        )}
                       </SelectContent>
                     </Select>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      This team objective will be linked as a child of the selected
-                      company-level OKR.
+                      This team objective will be linked as a child of the
+                      selected company-level OKR.
                     </p>
                   </div>
                   <div>
@@ -2171,19 +2354,23 @@ export default function CompanyOKRs() {
                       min={1}
                       max={100}
                       value={parentWeight}
-                      onChange={(e) => setParentWeight(Number(e.target.value || 1))}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        setParentWeight(Number(e.target.value || 1))
+                      }
                       placeholder="Parent weight (1-100)"
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Weight of this team objective under the parent (children total ≤ 100).
+                      Weight of this team objective under the parent (children
+                      total ≤ 100).
                     </p>
                   </div>
-                </>
+                </div>
               )}
-            </>
+            </div>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Creating a company-level OKR (parent). Teams' OKRs will be linked to this later.
+              Creating a company-level OKR (parent). Teams' OKRs will be linked
+              to this later.
             </p>
           )}
 
@@ -2200,63 +2387,77 @@ export default function CompanyOKRs() {
 
       {/* OKR list */}
       {teams.length === 0 ? (
-        <EmptyState title="No OKRs yet" description="Add your first objective above." />
+        <EmptyState
+          title="No OKRs yet"
+          description="Add your first objective above."
+        />
       ) : (
         <div className="space-y-4">
-          {teams.map((team) => {
-            const key = team.team_id ?? "unassigned";
-            const isOpen = openTeams[key] ?? true;
-            const isUnassigned = !team.team_id;
+          {teams.map((team: TeamBlock) => {
+            const teamKey: string = team.team_id ?? "unassigned";
+            const isOpen: boolean = openTeams[teamKey] ?? true;
+            const isUnassigned: boolean = team.team_id === null;
 
             const objectiveList: Objective[] = isUnassigned
-              ? companyLevelOptions.map((p) => {
-                  const parentProgress = parentProgressById[p.id] ?? 0;
-                  const children = safeArray(childrenByParentId[p.id]).sort(
-                    (a, b) => clamp01(b.progress) - clamp01(a.progress)
-                  );
-                  return {
-                    id: p.id,
-                    title: p.title,
-                    progress: parentProgress,
-                    parent_id: null,
-                    parent_weight: null,
-                    timeline: undefined,
-                    key_results: children.map((c) => ({
-                      id: c.id,
-                      title: `${c.title}: ${c.team_name ?? "Unassigned"}`,
-                      status: krStatusFromProgress(c.progress),
-                      progress: clamp01(c.progress),
-                      weight: Number(c.parent_weight ?? 0) || 1,
-                    })),
-                  };
-                })
-              : safeArray(team.objectives);
+              ? companyLevelOptions.map(
+                  (p: CompanyLevelObjectiveOption): Objective => {
+                    const parentProgress: number =
+                      parentProgressById[p.id] ?? 0;
+                    const children: CompanyOKRChild[] = safeArrChild(
+                      childrenByParentId[p.id]
+                    ).sort(
+                      (a: CompanyOKRChild, b: CompanyOKRChild) =>
+                        clampProgress(b.progress) - clampProgress(a.progress)
+                    );
+                    const krs: KR[] = children.map(
+                      (c: CompanyOKRChild): KR => ({
+                        id: c.id,
+                        title: `${c.title}: ${c.team_name ?? "Unassigned"}`,
+                        status: krStatusFromProgress(c.progress),
+                        progress: clampProgress(c.progress),
+                        weight: Number(c.parent_weight ?? 0) || 1,
+                      })
+                    );
+                    const obj: Objective = {
+                      id: p.id,
+                      title: p.title,
+                      progress: parentProgress,
+                      parent_id: null,
+                      parent_weight: null,
+                      timeline: undefined,
+                      key_results: krs,
+                    };
+                    return obj;
+                  }
+                )
+              : safeArrObjective(team.objectives);
 
-            const q = query.trim().toLowerCase();
-            const filteredObjectives = q
-              ? objectiveList.filter((o) => {
-                  const inObj = o.title.toLowerCase().includes(q);
-                  const inKrs = safeArray(o.key_results).some((k) =>
-                    k.title.toLowerCase().includes(q)
+            const q: string = query.trim().toLowerCase();
+
+            const filteredOnce: Objective[] = q
+              ? objectiveList.filter((o: Objective) => {
+                  const inObj: boolean = o.title.toLowerCase().includes(q);
+                  const inKrs: boolean = safeArrKR(o.key_results).some(
+                    (k: KR) => k.title.toLowerCase().includes(q)
                   );
                   return inObj || inKrs;
                 })
               : objectiveList;
 
-            const filteredObjectives2 = onlyAttention
-              ? filteredObjectives.filter((o) => {
+            const filteredFinal: Objective[] = onlyAttention
+              ? filteredOnce.filter((o: Objective) => {
                   const tl = o.timeline;
-                  const needs =
-                    (tl?.is_expired ?? false) ||
-                    (tl?.needs_extension_prompt ?? false) ||
-                    clamp01(o.progress) < 20 ||
-                    safeArray(o.key_results).length === 0;
-                  return needs;
+                  const needsAttention: boolean =
+                    (tl?.is_expired === true) ||
+                    (tl?.needs_extension_prompt === true) ||
+                    clampProgress(o.progress) < 20 ||
+                    safeArrKR(o.key_results).length === 0;
+                  return needsAttention;
                 })
-              : filteredObjectives;
+              : filteredOnce;
 
             return (
-              <Card key={key} className={GLASS}>
+              <Card key={teamKey} className={GLASS}>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between gap-2">
                     <div>
@@ -2272,17 +2473,19 @@ export default function CompanyOKRs() {
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
-                      {!isUnassigned ? (
+                      {!isUnassigned && (
                         <Pill tone="neutral">
-                          Objectives:{" "}
-                          {safeArray(team.objectives).length}
+                          Objectives: {safeArrObjective(team.objectives).length}
                         </Pill>
-                      ) : null}
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() =>
-                          setOpenTeams((p) => ({ ...p, [key]: !isOpen }))
+                          setOpenTeams((p: Record<string, boolean>) => ({
+                            ...p,
+                            [teamKey]: !isOpen,
+                          }))
                         }
                         className="h-8 w-8"
                       >
@@ -2298,7 +2501,7 @@ export default function CompanyOKRs() {
 
                 {isOpen && (
                   <CardContent className="pt-0">
-                    {filteredObjectives2.length === 0 ? (
+                    {filteredFinal.length === 0 ? (
                       <EmptyState
                         title={
                           isUnassigned
@@ -2313,45 +2516,59 @@ export default function CompanyOKRs() {
                       />
                     ) : (
                       <div className="space-y-3">
-                        {filteredObjectives2.map((obj) => {
+                        {filteredFinal.map((obj: Objective) => {
                           const tl = obj.timeline;
-                          const draft = tlDraftByObj[obj.id] || { start: "", end: "" };
-                          const isSavingTl = !!isSavingTimelineByObj[obj.id];
-                          const serverStart = toDateInputValue(tl?.timeline_start);
-                          const serverEnd = toDateInputValue(tl?.timeline_end);
-                          const isTlDirty =
-                            draft.start !== (serverStart || "") ||
-                            draft.end !== (serverEnd || "");
-                          const serverParentWeight = Number(obj.parent_weight ?? 0);
-                          const draftParentWeight = Number(
+                          const draft: TlDraft = tlDraftByObj[obj.id] || {
+                            start: "",
+                            end: "",
+                          };
+                          const isSavingTl: boolean =
+                            !!isSavingTimelineByObj[obj.id];
+                          const serverStart: string = toDateInput(
+                            tl?.timeline_start
+                          );
+                          const serverEnd: string = toDateInput(tl?.timeline_end);
+                          const isTlDirty: boolean =
+                            draft.start !== serverStart ||
+                            draft.end !== serverEnd;
+
+                          const serverParentWeight: number = Number(
+                            obj.parent_weight ?? 0
+                          );
+                          const draftParentWeight: number = Number(
                             parentWeightDraftByObj[obj.id] ?? serverParentWeight
                           );
-                          const isChild = !!obj.parent_id;
-                          const isSavingPW = !!isSavingParentWeightByObj[obj.id];
-                          const isParentWeightDirty =
+                          const isChild: boolean = !!obj.parent_id;
+                          const isSavingPW: boolean =
+                            !!isSavingParentWeightByObj[obj.id];
+                          const isParentWeightDirty: boolean =
                             isChild && draftParentWeight !== serverParentWeight;
-                          const parentTitle = obj.parent_id
-                            ? parentTitleById[obj.parent_id]
+
+                          const parentTitle: string = obj.parent_id
+                            ? (parentTitleById[obj.parent_id] ?? "")
                             : "";
-                          const isObjOpen = openObjectiveById[obj.id] ?? true;
-                          const objectiveNeedsAttention =
+                          const isObjOpen: boolean =
+                            openObjectiveById[obj.id] ?? true;
+                          const objectiveNeedsAttention: boolean =
                             (!isUnassigned &&
-                              ((tl?.is_expired ?? false) ||
-                                (tl?.needs_extension_prompt ?? false))) ||
-                            clamp01(obj.progress) < 20;
+                              ((tl?.is_expired === true) ||
+                                (tl?.needs_extension_prompt === true))) ||
+                            clampProgress(obj.progress) < 20;
 
                           return (
                             <div
                               key={obj.id}
                               className={`rounded-xl ${GLASS_SUB} overflow-hidden`}
                             >
-                              {/* Objective header */}
+                              {/* Objective header button */}
                               <button
                                 onClick={() =>
-                                  setOpenObjectiveById((p) => ({
-                                    ...p,
-                                    [obj.id]: !isObjOpen,
-                                  }))
+                                  setOpenObjectiveById(
+                                    (p: Record<string, boolean>) => ({
+                                      ...p,
+                                      [obj.id]: !isObjOpen,
+                                    })
+                                  )
                                 }
                                 className="w-full text-left p-4"
                               >
@@ -2386,7 +2603,7 @@ export default function CompanyOKRs() {
                                     <span className="text-xs font-medium text-muted-foreground">
                                       Progress:{" "}
                                       <span className="text-foreground">
-                                        {Math.round(clamp01(obj.progress))}%
+                                        {Math.round(clampProgress(obj.progress))}%
                                       </span>
                                     </span>
                                     <div className="w-24">
@@ -2399,9 +2616,11 @@ export default function CompanyOKRs() {
                               {/* Objective body */}
                               {isObjOpen && (
                                 <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-4">
-                                  {/* Parent weight */}
+                                  {/* Parent weight editor */}
                                   {!isUnassigned && isChild && (
-                                    <div className={`rounded-lg p-3 ${GLASS_SUB} space-y-2`}>
+                                    <div
+                                      className={`rounded-lg p-3 ${GLASS_SUB} space-y-2`}
+                                    >
                                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                                         Objective weight under parent
                                       </p>
@@ -2412,11 +2631,17 @@ export default function CompanyOKRs() {
                                           max={100}
                                           className="h-8 w-24 text-sm"
                                           value={draftParentWeight}
-                                          onChange={(e) =>
-                                            setParentWeightDraftByObj((p) => ({
-                                              ...p,
-                                              [obj.id]: Number(e.target.value || 1),
-                                            }))
+                                          onChange={(
+                                            e: React.ChangeEvent<HTMLInputElement>
+                                          ) =>
+                                            setParentWeightDraftByObj(
+                                              (p: Record<string, number>) => ({
+                                                ...p,
+                                                [obj.id]: Number(
+                                                  e.target.value || 1
+                                                ),
+                                              })
+                                            )
                                           }
                                         />
                                         <Button
@@ -2441,9 +2666,11 @@ export default function CompanyOKRs() {
                                     </div>
                                   )}
 
-                                  {/* Timeline */}
+                                  {/* Timeline editor */}
                                   {!isUnassigned && (
-                                    <div className={`rounded-lg p-3 ${GLASS_SUB} space-y-2`}>
+                                    <div
+                                      className={`rounded-lg p-3 ${GLASS_SUB} space-y-2`}
+                                    >
                                       <div className="flex flex-wrap items-center gap-2">
                                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                                           Objective Timeline
@@ -2451,15 +2678,17 @@ export default function CompanyOKRs() {
                                         {tl ? (
                                           <div className="flex flex-wrap gap-1.5">
                                             <Pill
-                                              tone={tl.is_expired ? "amber" : "emerald"}
+                                              tone={
+                                                tl.is_expired ? "amber" : "emerald"
+                                              }
                                             >
                                               {tl.is_expired ? "Expired" : "Active"}
                                             </Pill>
-                                            {tl.needs_extension_prompt ? (
+                                            {tl.needs_extension_prompt && (
                                               <Pill tone="amber">
                                                 Extension recommended
                                               </Pill>
-                                            ) : null}
+                                            )}
                                             <Pill tone="neutral">
                                               Days left: {tl.days_remaining}
                                             </Pill>
@@ -2479,14 +2708,18 @@ export default function CompanyOKRs() {
                                             type="date"
                                             className="h-8 text-sm"
                                             value={draft.start}
-                                            onChange={(e) =>
-                                              setTlDraftByObj((p) => ({
-                                                ...p,
-                                                [obj.id]: {
-                                                  ...draft,
-                                                  start: e.target.value,
-                                                },
-                                              }))
+                                            onChange={(
+                                              e: React.ChangeEvent<HTMLInputElement>
+                                            ) =>
+                                              setTlDraftByObj(
+                                                (p: Record<string, TlDraft>) => ({
+                                                  ...p,
+                                                  [obj.id]: {
+                                                    ...draft,
+                                                    start: e.target.value,
+                                                  },
+                                                })
+                                              )
                                             }
                                           />
                                         </div>
@@ -2498,14 +2731,18 @@ export default function CompanyOKRs() {
                                             type="date"
                                             className="h-8 text-sm"
                                             value={draft.end}
-                                            onChange={(e) =>
-                                              setTlDraftByObj((p) => ({
-                                                ...p,
-                                                [obj.id]: {
-                                                  ...draft,
-                                                  end: e.target.value,
-                                                },
-                                              }))
+                                            onChange={(
+                                              e: React.ChangeEvent<HTMLInputElement>
+                                            ) =>
+                                              setTlDraftByObj(
+                                                (p: Record<string, TlDraft>) => ({
+                                                  ...p,
+                                                  [obj.id]: {
+                                                    ...draft,
+                                                    end: e.target.value,
+                                                  },
+                                                })
+                                              )
                                             }
                                           />
                                         </div>
@@ -2513,8 +2750,12 @@ export default function CompanyOKRs() {
                                           <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => saveObjectiveTimeline(obj.id)}
-                                            disabled={!isTlDirty || isSavingTl || isSaving}
+                                            onClick={() =>
+                                              saveObjectiveTimeline(obj.id)
+                                            }
+                                            disabled={
+                                              !isTlDirty || isSavingTl || isSaving
+                                            }
                                           >
                                             {isSavingTl ? (
                                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2528,7 +2769,7 @@ export default function CompanyOKRs() {
                                     </div>
                                   )}
 
-                                  {/* Key Results header */}
+                                  {/* KR header */}
                                   <div className="flex items-center justify-between">
                                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                                       {isUnassigned
@@ -2536,12 +2777,12 @@ export default function CompanyOKRs() {
                                         : "Key Results"}
                                     </p>
                                     <span className="text-xs text-muted-foreground">
-                                      {safeArray(obj.key_results).length} items
+                                      {safeArrKR(obj.key_results).length} items
                                     </span>
                                   </div>
 
-                                  {/* Key Results list */}
-                                  {safeArray(obj.key_results).length === 0 ? (
+                                  {/* KR list */}
+                                  {safeArrKR(obj.key_results).length === 0 ? (
                                     <p className="text-sm text-muted-foreground py-2">
                                       {isUnassigned
                                         ? "No child objectives linked yet."
@@ -2549,20 +2790,26 @@ export default function CompanyOKRs() {
                                     </p>
                                   ) : (
                                     <div className="space-y-2">
-                                      {safeArray(obj.key_results).map((kr) => {
-                                        const s = statusLabel(kr.status);
-                                        const serverKRWeight = Number(kr.weight ?? 1);
-                                        const draftKRWeight = Number(
+                                      {safeArrKR(obj.key_results).map((kr: KR) => {
+                                        const sl = getStatusLabel(kr.status);
+                                        const serverKRWeight: number = Number(
+                                          kr.weight ?? 1
+                                        );
+                                        const draftKRWeight: number = Number(
                                           krWeightDraftById[kr.id] ?? serverKRWeight
                                         );
-                                        const isSavingKrW =
+                                        const isSavingKrW: boolean =
                                           !!isSavingKrWeightById[kr.id];
-                                        const isKrWeightDirty =
+                                        const isKrWeightDirty: boolean =
                                           draftKRWeight !== serverKRWeight;
-                                        const comments =
-                                          krUpdatesByKrId[String(kr.id)] ?? [];
-                                        const commentsCount = comments.length;
-                                        const latest = comments[0];
+                                        const comments: KRUpdateItem[] =
+                                          safeArrKRUpdate(
+                                            krUpdatesByKrId[String(kr.id)]
+                                          );
+                                        const commentsCount: number =
+                                          comments.length;
+                                        const latest: KRUpdateItem | undefined =
+                                          comments[0];
 
                                         return (
                                           <div
@@ -2570,16 +2817,20 @@ export default function CompanyOKRs() {
                                             className={`rounded-lg p-3 ${GLASS_SUB}`}
                                           >
                                             <div className="flex flex-col gap-2">
+                                              {/* KR title + progress */}
                                               <div className="flex items-start justify-between gap-2">
                                                 <div className="min-w-0 flex-1">
                                                   <p className="text-sm font-medium leading-snug">
                                                     {kr.title}
                                                   </p>
                                                   <p
-                                                    className={`text-xs ${s.cls} mt-0.5`}
+                                                    className={`text-xs ${sl.cls} mt-0.5`}
                                                   >
-                                                    {s.text} •{" "}
-                                                    {Math.round(clamp01(kr.progress))}%
+                                                    {sl.text} •{" "}
+                                                    {Math.round(
+                                                      clampProgress(kr.progress)
+                                                    )}
+                                                    %
                                                   </p>
                                                 </div>
                                                 <div className="w-20 shrink-0 pt-1">
@@ -2587,7 +2838,7 @@ export default function CompanyOKRs() {
                                                 </div>
                                               </div>
 
-                                              {/* Comments button (only for real KRs) */}
+                                              {/* Comments button */}
                                               {!isUnassigned && (
                                                 <button
                                                   className="flex items-start gap-2 rounded-md border border-border/50 bg-background/50 px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
@@ -2623,7 +2874,7 @@ export default function CompanyOKRs() {
                                                 </button>
                                               )}
 
-                                              {/* KR weight */}
+                                              {/* KR weight editor */}
                                               {isUnassigned ? (
                                                 <p className="text-xs text-muted-foreground">
                                                   Weight: {serverKRWeight}
@@ -2640,13 +2891,22 @@ export default function CompanyOKRs() {
                                                       max={100}
                                                       className="h-7 w-20 text-xs"
                                                       value={draftKRWeight}
-                                                      onChange={(e) =>
-                                                        setKrWeightDraftById((p) => ({
-                                                          ...p,
-                                                          [kr.id]: Number(
-                                                            e.target.value || 1
-                                                          ),
-                                                        }))
+                                                      onChange={(
+                                                        e: React.ChangeEvent<HTMLInputElement>
+                                                      ) =>
+                                                        setKrWeightDraftById(
+                                                          (
+                                                            p: Record<
+                                                              string,
+                                                              number
+                                                            >
+                                                          ) => ({
+                                                            ...p,
+                                                            [kr.id]: Number(
+                                                              e.target.value || 1
+                                                            ),
+                                                          })
+                                                        )
                                                       }
                                                     />
                                                     <Button
@@ -2657,7 +2917,10 @@ export default function CompanyOKRs() {
                                                         !isKrWeightDirty || isSavingKrW
                                                       }
                                                       onClick={() =>
-                                                        saveKRWeight(kr.id, draftKRWeight)
+                                                        saveKRWeight(
+                                                          kr.id,
+                                                          draftKRWeight
+                                                        )
                                                       }
                                                     >
                                                       {isSavingKrW ? (
@@ -2680,7 +2943,7 @@ export default function CompanyOKRs() {
                                     </div>
                                   )}
 
-                                  {/* Add KR */}
+                                  {/* Add KR form */}
                                   {!isUnassigned && (
                                     <div
                                       className={`rounded-lg p-3 ${GLASS_SUB} space-y-2`}
@@ -2692,11 +2955,15 @@ export default function CompanyOKRs() {
                                         <Input
                                           className="h-8 flex-1 min-w-40 text-sm"
                                           value={krDraftByObjective[obj.id] || ""}
-                                          onChange={(e) =>
-                                            setKrDraftByObjective((prev) => ({
-                                              ...prev,
-                                              [obj.id]: e.target.value,
-                                            }))
+                                          onChange={(
+                                            e: React.ChangeEvent<HTMLInputElement>
+                                          ) =>
+                                            setKrDraftByObjective(
+                                              (prev: Record<string, string>) => ({
+                                                ...prev,
+                                                [obj.id]: e.target.value,
+                                              })
+                                            )
                                           }
                                           placeholder="Key result title..."
                                         />
@@ -2705,12 +2972,20 @@ export default function CompanyOKRs() {
                                           min={1}
                                           max={100}
                                           className="h-8 w-28 text-sm"
-                                          value={krWeightByObjective[obj.id] ?? 1}
-                                          onChange={(e) =>
-                                            setKrWeightByObjective((prev) => ({
-                                              ...prev,
-                                              [obj.id]: Number(e.target.value || 1),
-                                            }))
+                                          value={
+                                            krWeightByObjective[obj.id] ?? 1
+                                          }
+                                          onChange={(
+                                            e: React.ChangeEvent<HTMLInputElement>
+                                          ) =>
+                                            setKrWeightByObjective(
+                                              (prev: Record<string, number>) => ({
+                                                ...prev,
+                                                [obj.id]: Number(
+                                                  e.target.value || 1
+                                                ),
+                                              })
+                                            )
                                           }
                                           placeholder="Weight"
                                         />
@@ -2746,18 +3021,24 @@ export default function CompanyOKRs() {
       )}
 
       {/* KR Comments Dialog */}
-      <Dialog open={!!activeKr} onOpenChange={(v) => !v && setActiveKr(null)}>
+      <Dialog
+        open={activeKr !== null}
+        onOpenChange={(v: boolean) => {
+          if (!v) setActiveKr(null);
+        }}
+      >
         <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>KR Comments</DialogTitle>
           </DialogHeader>
-          {!activeKr ? null : (
+          {activeKr !== null && (
             <div className="flex flex-col gap-3 min-h-0">
               <div>
                 <p className="font-medium text-sm">{activeKr.title}</p>
                 <div className="mt-1 flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
-                    Total: {krUpdatesByKrId[String(activeKr.id)]?.length ?? 0}
+                    Total:{" "}
+                    {safeArrKRUpdate(krUpdatesByKrId[activeKr.id]).length}
                   </span>
                   <Button
                     size="sm"
@@ -2776,30 +3057,32 @@ export default function CompanyOKRs() {
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                {(krUpdatesByKrId[String(activeKr.id)] ?? []).length === 0 ? (
+                {safeArrKRUpdate(krUpdatesByKrId[activeKr.id]).length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     No comments yet.
                   </p>
                 ) : (
-                  (krUpdatesByKrId[String(activeKr.id)] ?? []).map((u) => (
-                    <div
-                      key={u.id}
-                      className={`rounded-lg p-3 ${GLASS_SUB} space-y-1`}
-                    >
-                      <div className="flex items-center justify-between flex-wrap gap-1">
-                        <p className="text-xs font-medium">
-                          {u.week_label ?? u.week_id}
-                          {" • "}
-                          {u.author?.name ?? "Unknown"}
-                          {u.team?.name ? ` • ${u.team.name}` : ""}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(u.created_at).toLocaleString()}
-                        </p>
+                  safeArrKRUpdate(krUpdatesByKrId[activeKr.id]).map(
+                    (u: KRUpdateItem) => (
+                      <div
+                        key={u.id}
+                        className={`rounded-lg p-3 ${GLASS_SUB} space-y-1`}
+                      >
+                        <div className="flex items-center justify-between flex-wrap gap-1">
+                          <p className="text-xs font-medium">
+                            {u.week_label ?? u.week_id}
+                            {" • "}
+                            {u.author?.name ?? "Unknown"}
+                            {u.team?.name ? ` • ${u.team.name}` : ""}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(u.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                        <p className="text-sm leading-relaxed">{u.note}</p>
                       </div>
-                      <p className="text-sm leading-relaxed">{u.note}</p>
-                    </div>
-                  ))
+                    )
+                  )
                 )}
               </div>
             </div>
@@ -2808,4 +3091,4 @@ export default function CompanyOKRs() {
       </Dialog>
     </div>
   );
-}s
+}
