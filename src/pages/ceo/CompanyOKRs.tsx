@@ -1561,32 +1561,55 @@ export default function CompanyOKRs() {
 
   const isCompanyMode = selectedTeamId === COMPANY_SENTINEL;
 
-  const loadAllKrUpdates = async () => {
-    setIsLoadingKrUpdates(true);
-    try {
-      const res = await apiFetch<CompanyKRUpdatesResponse>("/okrs/company/key-results/updates?limit=500");
+ const loadAllKrUpdates = async () => {
+  setIsLoadingKrUpdates(true);
+  try {
+    const res: any = await apiFetch("/okrs/company/key-results/updates?limit=500");
 
-      // Sort newest-first globally then group
-      const items = safeArray(res.items).slice().sort((a, b) => {
-        const ta = Date.parse(a.created_at || "");
-        const tb = Date.parse(b.created_at || "");
-        return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
-      });
+    // Support both shapes:
+    // { items: [...] } OR { data: { items: [...] } }
+    const rawItems = safeArray(res?.items ?? res?.data?.items);
 
-      const map: Record<string, KRUpdateItem[]> = {};
-      for (const it of items) {
-        (map[it.kr_id] ||= []).push(it);
-      }
-      setKrUpdatesByKrId(map);
-    } catch (e) {
-      console.error(e);
-      setKrUpdatesByKrId({});
-      toast.error("Failed to load KR comments");
-    } finally {
-      setIsLoadingKrUpdates(false);
+    // Normalize possible backend field names
+    const items: KRUpdateItem[] = rawItems
+      .map((it: any) => ({
+        ...it,
+        id: String(it?.id ?? ""),
+        kr_id: String(it?.kr_id ?? it?.key_result_id ?? it?.keyResultId ?? "").trim(),
+        note: String(it?.note ?? it?.comment ?? it?.message ?? ""),
+        created_at: String(it?.created_at ?? it?.createdAt ?? ""),
+      }))
+      .filter((it: KRUpdateItem) => !!it.kr_id);
+
+    // Sort newest-first
+    items.sort((a, b) => {
+      const ta = Date.parse(a.created_at || "");
+      const tb = Date.parse(b.created_at || "");
+      return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+    });
+
+    const map: Record<string, KRUpdateItem[]> = {};
+    for (const it of items) {
+      const key = String(it.kr_id);
+      (map[key] ||= []).push(it);
     }
-  };
 
+    setKrUpdatesByKrId(map);
+
+    // debug
+    console.log("KR updates loaded:", {
+      total: items.length,
+      groupedKeys: Object.keys(map).length,
+      sample: items.slice(0, 3),
+    });
+  } catch (e) {
+    console.error("Failed to load KR comments:", e);
+    setKrUpdatesByKrId({});
+    toast.error("Failed to load KR comments");
+  } finally {
+    setIsLoadingKrUpdates(false);
+  }
+};
   const parentTitleById = useMemo(() => {
     const m: Record<string, string> = {};
     for (const p of companyLevelOptions) m[p.id] = p.title;
@@ -1641,6 +1664,7 @@ export default function CompanyOKRs() {
             parent_weight: o?.parent_weight ?? 0,
             key_results: safeArray(o.key_results).map((kr: any) => ({
               ...kr,
+              id: String(kr?.id ?? kr?.kr_id ?? kr?.key_result_id ?? kr?.keyResultId ?? "").trim(),
               progress: kr?.progress ?? 0,
               weight: kr?.weight ?? 1,
             })),
@@ -1775,6 +1799,13 @@ export default function CompanyOKRs() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCEO]);
+
+  useEffect(() => {
+    if (activeKr) {
+      loadAllKrUpdates();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKr?.id]);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -2420,7 +2451,7 @@ export default function CompanyOKRs() {
                                         const isKrWeightDirty = draftKRWeight !== serverKRWeight;
 
                                         // ✅ comments for this KR (newest-first already)
-                                        const comments = krUpdatesByKrId[kr.id] ?? [];
+                                        const comments = krUpdatesByKrId[String(kr.id)] ?? [];
                                         const commentsCount = comments.length;
                                         const latest = comments[0];
 
@@ -2579,7 +2610,7 @@ export default function CompanyOKRs() {
 
               <div className="flex items-center justify-between">
                 <div className="text-xs text-muted-foreground">
-                  Total: {(krUpdatesByKrId[activeKr.id]?.length ?? 0)}
+                  Total: {(krUpdatesByKrId[String(activeKr.id)]?.length ?? 0)}
                 </div>
 
                 <Button size="sm" variant="outline" onClick={loadAllKrUpdates} disabled={isLoadingKrUpdates}>
@@ -2589,10 +2620,10 @@ export default function CompanyOKRs() {
               </div>
 
               <div className="max-h-[420px] overflow-auto space-y-2 pr-1">
-                {(krUpdatesByKrId[activeKr.id] ?? []).length === 0 ? (
+                {(krUpdatesByKrId[String(activeKr.id)] ?? []).length === 0 ? (
                   <div className="text-sm text-muted-foreground">No comments yet.</div>
                 ) : (
-                  (krUpdatesByKrId[activeKr.id] ?? []).map((u) => (
+                  (krUpdatesByKrId[String(activeKr.id)] ?? []).map((u) => (
                     <div key={u.id} className={`rounded-xl ${GLASS_SUB} p-3`}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-xs text-muted-foreground">
