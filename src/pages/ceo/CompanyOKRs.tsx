@@ -1,22 +1,48 @@
 // src/pages/ceo/CompanyOKRs.tsx
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/shared/LoadingState";
 import { EmptyState } from "@/components/shared/EmptyState";
 
-import { ChevronUp, ChevronDown, Plus, RefreshCw, Save } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+import {
+  ChevronUp,
+  ChevronDown,
+  Plus,
+  RefreshCw,
+  Save,
+  MessageSquare,
+  Loader2,
+} from "lucide-react";
+
+// --------------------
+// Updates (CEO comments)
+// --------------------
+type KRUpdateItem = {
+  id: string;
+  kr_id: string;
+  kr_title: string;
+  objective_id: string;
+  objective_title: string;
+  team: { id: string; name: string } | null;
+  week_id: string;
+  week_label: string | null;
+  note: string;
+  meta: any;
+  created_at: string;
+  author: { id: string; name: string; email: string } | null;
+};
+
+type CompanyKRUpdatesResponse = { items: KRUpdateItem[]; count: number };
 
 // --------------------
 // Types
@@ -43,11 +69,8 @@ type Objective = {
   id: string;
   title: string;
   progress: number;
-
-  // ✅ for child objectives
   parent_id?: string | null;
   parent_weight?: number | null;
-
   key_results: KR[];
   timeline?: ObjectiveTimeline;
 };
@@ -71,10 +94,33 @@ type CurrentOKRsResponse = {
 type TeamOption = { id: string; name: string };
 type TeamsResponse = { items: TeamOption[]; count: number };
 
-// Company-level objectives (parent)
 type CompanyLevelObjectiveOption = { id: string; title: string };
-type CompanyLevelObjectivesResponse = {
-  items: CompanyLevelObjectiveOption[];
+type CompanyLevelObjectivesResponse = { items: CompanyLevelObjectiveOption[]; count: number };
+
+type CurrentWeekResponse = {
+  week_id: string;
+  start_date: string;
+  end_date: string;
+  display_label: string;
+};
+
+type CompanyOKRChild = {
+  id: string;
+  title: string;
+  team_name: string | null;
+  progress: number;
+  parent_weight?: number;
+};
+
+type CompanyLevelOKR = {
+  id: string;
+  title: string;
+  progress: number;
+  children: CompanyOKRChild[];
+};
+
+type CompanyLevelOKRsResponse = {
+  items: CompanyLevelOKR[];
   count: number;
 };
 
@@ -89,56 +135,147 @@ function formatDuration(seconds: number) {
   return `${days}d ${hours}h ${mins}m`;
 }
 
-function statusLabel(s: KRStatus) {
-  if (s === "completed") return { text: "Completed", cls: "text-green-600" };
-  if (s === "in_progress") return { text: "In Progress", cls: "text-amber-600" };
-  return { text: "Not Started", cls: "text-muted-foreground" };
-}
-
 function safeArray<T>(x: T[] | undefined | null): T[] {
   return Array.isArray(x) ? x : [];
 }
 
-// ISO date -> yyyy-mm-dd (for <input type="date">)
+function clamp01(x: number) {
+  return Math.min(100, Math.max(0, Number(x || 0)));
+}
+
+function krStatusFromProgress(p: number): KRStatus {
+  const v = clamp01(p);
+  if (v >= 100) return "completed";
+  if (v > 0) return "in_progress";
+  return "not_started";
+}
+
+function statusLabel(s: KRStatus) {
+  if (s === "completed") return { text: "Completed", cls: "text-emerald-600 dark:text-emerald-400" };
+  if (s === "in_progress") return { text: "In Progress", cls: "text-amber-700 dark:text-amber-400" };
+  return { text: "Not Started", cls: "text-muted-foreground" };
+}
+
 function toDateInputValue(iso?: string) {
   if (!iso) return "";
   return iso.slice(0, 10);
 }
 
+// --------------------
+// Theme-safe design tokens
+// --------------------
+const GLASS =
+  "border border-border/60 bg-card/60 backdrop-blur-xl " +
+  "shadow-[0_10px_30px_rgba(0,0,0,0.10)] dark:shadow-[0_18px_50px_rgba(0,0,0,0.35)] " +
+  "ring-1 ring-primary/10";
+
+const GLASS_SUB = "border border-border/60 bg-background/40 backdrop-blur";
+
+function Pill({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "amber" | "emerald";
+}) {
+  const toneCls =
+    tone === "emerald"
+      ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-300"
+      : tone === "amber"
+      ? "bg-amber-500/10 text-amber-800 border-amber-500/20 dark:text-amber-300"
+      : "bg-muted/40 text-muted-foreground border-border/60";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${toneCls}`}>
+      {children}
+    </span>
+  );
+}
+
+function ProgressBar({ value }: { value: number }) {
+  const v = clamp01(value);
+  return (
+    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+      <div className="h-2 rounded-full bg-primary" style={{ width: `${v}%` }} />
+    </div>
+  );
+}
+
+// ✅ Radix Select cannot use empty string as item value
+const COMPANY_SENTINEL = "__company__";
+
 export default function CompanyOKRs() {
   const { user } = useAuth();
   const isCEO = user?.role === "ceo";
 
+  // ✅ CEO comments cache (all KRs)
+  const [krUpdatesByKrId, setKrUpdatesByKrId] = useState<Record<string, KRUpdateItem[]>>({});
+  const [isLoadingKrUpdates, setIsLoadingKrUpdates] = useState(false);
+  const [activeKr, setActiveKr] = useState<{ id: string; title: string } | null>(null);
+
   const [data, setData] = useState<CurrentOKRsResponse | null>(null);
   const [teamsOptions, setTeamsOptions] = useState<TeamOption[]>([]);
   const [companyLevelOptions, setCompanyLevelOptions] = useState<CompanyLevelObjectiveOption[]>([]);
+  const [companyLevelProgress, setCompanyLevelProgress] = useState<CompanyLevelOKR[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // collapse per team
   const [openTeams, setOpenTeams] = useState<Record<string, boolean>>({});
 
-  // Add objective (company-level OR team-level)
+  // Add objective
   const [newObjectiveTitle, setNewObjectiveTitle] = useState("");
-  const [selectedTeamId, setSelectedTeamId] = useState<string>(""); // "" => company-level parent
-  const [selectedParentId, setSelectedParentId] = useState<string>(""); // required when team selected
-  const [parentWeight, setParentWeight] = useState<number>(10); // default
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(COMPANY_SENTINEL);
+  const [selectedParentId, setSelectedParentId] = useState<string>("");
+  const [parentWeight, setParentWeight] = useState<number>(10);
 
-  // Add KR (inline per objective)
+  // Add KR
   const [krDraftByObjective, setKrDraftByObjective] = useState<Record<string, string>>({});
   const [krWeightByObjective, setKrWeightByObjective] = useState<Record<string, number>>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Timeline edit drafts per objective
+  // Timeline drafts
   const [tlDraftByObj, setTlDraftByObj] = useState<Record<string, { start: string; end: string }>>({});
   const [isSavingTimelineByObj, setIsSavingTimelineByObj] = useState<Record<string, boolean>>({});
 
-  // ✅ CEO edits: objective parent weight drafts
+  // Parent weight drafts
   const [parentWeightDraftByObj, setParentWeightDraftByObj] = useState<Record<string, number>>({});
   const [isSavingParentWeightByObj, setIsSavingParentWeightByObj] = useState<Record<string, boolean>>({});
 
-  // ✅ CEO edits: KR weight drafts (per KR)
+  // KR weight drafts
   const [krWeightDraftById, setKrWeightDraftById] = useState<Record<string, number>>({});
   const [isSavingKrWeightById, setIsSavingKrWeightById] = useState<Record<string, boolean>>({});
+
+  // UX controls
+  const [query, setQuery] = useState("");
+  const [onlyAttention, setOnlyAttention] = useState(false);
+  const [openObjectiveById, setOpenObjectiveById] = useState<Record<string, boolean>>({});
+
+  const isCompanyMode = selectedTeamId === COMPANY_SENTINEL;
+
+  const loadAllKrUpdates = async () => {
+    setIsLoadingKrUpdates(true);
+    try {
+      const res = await apiFetch<CompanyKRUpdatesResponse>("/okrs/company/key-results/updates?limit=500");
+
+      // Sort newest-first globally then group
+      const items = safeArray(res.items).slice().sort((a, b) => {
+        const ta = Date.parse(a.created_at || "");
+        const tb = Date.parse(b.created_at || "");
+        return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+      });
+
+      const map: Record<string, KRUpdateItem[]> = {};
+      for (const it of items) {
+        (map[it.kr_id] ||= []).push(it);
+      }
+      setKrUpdatesByKrId(map);
+    } catch (e) {
+      console.error(e);
+      setKrUpdatesByKrId({});
+      toast.error("Failed to load KR comments");
+    } finally {
+      setIsLoadingKrUpdates(false);
+    }
+  };
 
   const parentTitleById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -146,10 +283,38 @@ export default function CompanyOKRs() {
     return m;
   }, [companyLevelOptions]);
 
+  const parentProgressById = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const p of companyLevelProgress) m[p.id] = clamp01(p.progress);
+    return m;
+  }, [companyLevelProgress]);
+
+  const childrenByParentId = useMemo(() => {
+    const m: Record<string, CompanyOKRChild[]> = {};
+    for (const p of companyLevelProgress) m[p.id] = safeArray(p.children);
+    return m;
+  }, [companyLevelProgress]);
+
   const remaining = useMemo(
     () => formatDuration(data?.quarter.seconds_remaining ?? 0),
     [data?.quarter.seconds_remaining]
   );
+
+  const summary = useMemo(() => {
+    const parents = companyLevelOptions.length;
+    const children = companyLevelProgress.reduce((acc, p) => acc + safeArray(p.children).length, 0);
+    const teams = safeArray(data?.teams).filter((t) => !!t.team_id).length;
+
+    let attention = 0;
+    for (const t of safeArray(data?.teams)) {
+      for (const o of safeArray(t.objectives)) {
+        const tl = o.timeline;
+        const needs = (tl?.is_expired ?? false) || (tl?.needs_extension_prompt ?? false) || clamp01(o.progress) < 20;
+        if (needs) attention += 1;
+      }
+    }
+    return { parents, children, teams, attention };
+  }, [companyLevelOptions.length, companyLevelProgress, data?.teams]);
 
   const load = async () => {
     setIsLoading(true);
@@ -175,7 +340,20 @@ export default function CompanyOKRs() {
 
       setData(normalized);
 
-      // default open all teams
+      // ✅ load comments cache for CEO
+      await loadAllKrUpdates();
+
+      try {
+        const cw = await apiFetch<CurrentWeekResponse>("/weeks/current");
+        const lvl = await apiFetch<CompanyLevelOKRsResponse>(
+          `/okrs/company/level-progress?week_id=${encodeURIComponent(cw.week_id)}`
+        );
+        setCompanyLevelProgress(safeArray(lvl.items));
+      } catch (e) {
+        console.warn("Failed to load company-level progress", e);
+        setCompanyLevelProgress([]);
+      }
+
       setOpenTeams((prev) => {
         const next: Record<string, boolean> = { ...prev };
         for (const t of normalized.teams) {
@@ -185,7 +363,16 @@ export default function CompanyOKRs() {
         return next;
       });
 
-      // init timeline drafts
+      setOpenObjectiveById((prev) => {
+        const next = { ...prev };
+        for (const t of normalized.teams) {
+          for (const o of safeArray(t.objectives)) {
+            if (typeof next[o.id] !== "boolean") next[o.id] = true;
+          }
+        }
+        return next;
+      });
+
       setTlDraftByObj((prev) => {
         const next = { ...prev };
         for (const team of normalized.teams) {
@@ -195,16 +382,12 @@ export default function CompanyOKRs() {
                 start: toDateInputValue(obj.timeline?.timeline_start),
                 end: toDateInputValue(obj.timeline?.timeline_end),
               };
-            } else {
-              if (!next[obj.id].start) next[obj.id].start = toDateInputValue(obj.timeline?.timeline_start);
-              if (!next[obj.id].end) next[obj.id].end = toDateInputValue(obj.timeline?.timeline_end);
             }
           }
         }
         return next;
       });
 
-      // init KR add-weight drafts per objective
       setKrWeightByObjective((prev) => {
         const next = { ...prev };
         for (const team of normalized.teams) {
@@ -215,7 +398,6 @@ export default function CompanyOKRs() {
         return next;
       });
 
-      // ✅ init objective parent weight drafts from server
       setParentWeightDraftByObj((prev) => {
         const next = { ...prev };
         for (const team of normalized.teams) {
@@ -227,7 +409,6 @@ export default function CompanyOKRs() {
         return next;
       });
 
-      // ✅ init KR weight drafts from server (per KR id)
       setKrWeightDraftById((prev) => {
         const next = { ...prev };
         for (const team of normalized.teams) {
@@ -240,11 +421,11 @@ export default function CompanyOKRs() {
         }
         return next;
       });
-
     } catch (e) {
       console.error(e);
       toast.error("Failed to load OKRs");
       setData(null);
+      setCompanyLevelProgress([]);
     } finally {
       setIsLoading(false);
     }
@@ -272,13 +453,11 @@ export default function CompanyOKRs() {
     }
   };
 
-  // Load OKRs once
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load teams & company-level whenever we know user is CEO
   useEffect(() => {
     if (isCEO) {
       loadTeams();
@@ -287,7 +466,6 @@ export default function CompanyOKRs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCEO]);
 
-  // quarter countdown tick (1 minute)
   useEffect(() => {
     const t = setInterval(() => {
       setData((prev) => {
@@ -301,7 +479,6 @@ export default function CompanyOKRs() {
         };
       });
     }, 60_000);
-
     return () => clearInterval(t);
   }, []);
 
@@ -311,18 +488,16 @@ export default function CompanyOKRs() {
     const title = newObjectiveTitle.trim();
     if (!title) return toast.error("Objective title is required");
 
-    // Mode A: company-level parent (when team is not selected)
-    if (!selectedTeamId) {
+    // Parent
+    if (isCompanyMode) {
       setIsSaving(true);
       try {
         await apiFetch("/okrs/company/level-objectives", {
           method: "POST",
           body: JSON.stringify({ title }),
         });
-
         setNewObjectiveTitle("");
         toast.success("Company-level objective added");
-
         await loadCompanyLevel();
         await load();
       } catch (e) {
@@ -334,7 +509,7 @@ export default function CompanyOKRs() {
       return;
     }
 
-    // Mode B: team-level child (requires parent + weight)
+    // Child
     if (!selectedParentId) return toast.error("Parent company-level OKR is required");
 
     const w = Number(parentWeight);
@@ -353,7 +528,7 @@ export default function CompanyOKRs() {
       });
 
       setNewObjectiveTitle("");
-      setSelectedTeamId("");
+      setSelectedTeamId(COMPANY_SENTINEL);
       setSelectedParentId("");
       setParentWeight(10);
 
@@ -374,9 +549,7 @@ export default function CompanyOKRs() {
     const weight = Number(krWeightByObjective[objectiveId] ?? 1);
 
     if (!title) return toast.error("Key Result title is required");
-    if (!Number.isFinite(weight) || weight < 1 || weight > 100) {
-      return toast.error("Weight must be between 1 and 100");
-    }
+    if (!Number.isFinite(weight) || weight < 1 || weight > 100) return toast.error("Weight must be between 1 and 100");
 
     setIsSaving(true);
     try {
@@ -412,10 +585,7 @@ export default function CompanyOKRs() {
     try {
       await apiFetch(`/okrs/company/objectives/${objectiveId}/timeline`, {
         method: "PATCH",
-        body: JSON.stringify({
-          timeline_start: start,
-          timeline_end: end,
-        }),
+        body: JSON.stringify({ timeline_start: start, timeline_end: end }),
       });
       toast.success("Timeline updated");
       await load();
@@ -427,7 +597,6 @@ export default function CompanyOKRs() {
     }
   };
 
-  // ✅ CEO: save objective parent weight (child objective weight under parent)
   const saveObjectiveParentWeight = async (objectiveId: string, weight: number) => {
     if (!isCEO) return;
 
@@ -450,7 +619,6 @@ export default function CompanyOKRs() {
     }
   };
 
-  // ✅ CEO: save KR weight
   const saveKRWeight = async (krId: string, weight: number) => {
     if (!isCEO) return;
 
@@ -495,25 +663,73 @@ export default function CompanyOKRs() {
   const hasParents = companyLevelOptions.length > 0;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 relative">
+      {/* Background accents */}
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute -top-24 right-0 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute bottom-0 left-0 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+      </div>
+
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Company OKRs</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">Company OKRs</h1>
+            <span className="inline-flex items-center rounded-full border border-border/60 bg-card/60 px-2 py-1 text-xs text-muted-foreground backdrop-blur">
+              {data.quarter.quarter_id}
+            </span>
+          </div>
+
           <p className="text-muted-foreground">
-            {data.quarter.quarter_id} ({data.quarter.start_date} → {data.quarter.end_date}) • Time left:{" "}
+            {data.quarter.start_date} → {data.quarter.end_date} • Time left:{" "}
             <span className="font-medium">{remaining}</span>
           </p>
+
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Pill>
+              Parents: <span className="ml-1 font-medium text-foreground">{summary.parents}</span>
+            </Pill>
+            <Pill>
+              Children: <span className="ml-1 font-medium text-foreground">{summary.children}</span>
+            </Pill>
+            <Pill>
+              Teams: <span className="ml-1 font-medium text-foreground">{summary.teams}</span>
+            </Pill>
+            {summary.attention > 0 ? (
+              <Pill tone="amber">
+                Needs attention: <span className="ml-1 font-medium text-foreground">{summary.attention}</span>
+              </Pill>
+            ) : (
+              <Pill tone="emerald">Healthy</Pill>
+            )}
+          </div>
         </div>
 
-        <Button variant="outline" onClick={load} disabled={isSaving}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={load} disabled={isSaving}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+
+            <Button variant={onlyAttention ? "default" : "outline"} onClick={() => setOnlyAttention((p) => !p)}>
+              Attention
+            </Button>
+          </div>
+
+          <div className={`w-full sm:w-[360px] rounded-xl ${GLASS} p-2`}>
+            <Input
+              className="h-9 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+              placeholder="Search objectives or KRs..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Add Objective */}
-      <Card>
+      <Card className={`${GLASS} overflow-hidden`}>
         <CardHeader>
           <CardTitle>Add new Objective</CardTitle>
           <CardDescription>
@@ -522,7 +738,6 @@ export default function CompanyOKRs() {
         </CardHeader>
 
         <CardContent className="grid gap-3 sm:grid-cols-6">
-          {/* Title */}
           <div className="sm:col-span-3">
             <Input
               value={newObjectiveTitle}
@@ -531,33 +746,37 @@ export default function CompanyOKRs() {
             />
           </div>
 
-          {/* Team */}
           <div className="sm:col-span-3">
-            <select
-              className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+            <Select
               value={selectedTeamId}
-              onChange={(e) => {
-                const v = e.target.value;
+              onValueChange={(v) => {
                 setSelectedTeamId(v);
 
-                if (v) {
+                // if switching to team-mode, auto-pick first parent
+                if (v !== COMPANY_SENTINEL) {
                   setSelectedParentId((prev) => prev || (companyLevelOptions[0]?.id ?? ""));
                 } else {
                   setSelectedParentId("");
                 }
               }}
             >
-              <option value="">Company-level (Parent OKR)</option>
-              {teamsOptions.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-10">
+                <SelectValue placeholder="Select mode / team..." />
+              </SelectTrigger>
+
+              <SelectContent className="border-border/60 bg-popover/90 text-popover-foreground backdrop-blur-xl">
+                <SelectItem value={COMPANY_SENTINEL}>Company-level (Parent OKR)</SelectItem>
+                {teamsOptions.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Parent + weight (team mode only) */}
-          {selectedTeamId ? (
+          {!isCompanyMode ? (
             <>
               {!hasParents ? (
                 <div className="sm:col-span-6 text-sm text-amber-600">
@@ -566,20 +785,20 @@ export default function CompanyOKRs() {
               ) : (
                 <>
                   <div className="sm:col-span-4">
-                    <select
-                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-                      value={selectedParentId}
-                      onChange={(e) => setSelectedParentId(e.target.value)}
-                    >
-                      <option value="" disabled>
-                        Select parent company-level OKR...
-                      </option>
-                      {companyLevelOptions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.title}
-                        </option>
-                      ))}
-                    </select>
+                    <Select value={selectedParentId} onValueChange={setSelectedParentId}>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select parent company-level OKR..." />
+                      </SelectTrigger>
+
+                      <SelectContent className="border-border/60 bg-popover/90 text-popover-foreground backdrop-blur-xl">
+                        {companyLevelOptions.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
                     <div className="mt-1 text-xs text-muted-foreground">
                       This team objective will be linked as a child of the selected company-level OKR.
                     </div>
@@ -607,11 +826,10 @@ export default function CompanyOKRs() {
             </div>
           )}
 
-          {/* Button */}
           <div className="sm:col-span-6">
-            <Button onClick={addObjective} disabled={isSaving || (selectedTeamId ? !hasParents : false)}>
+            <Button onClick={addObjective} disabled={isSaving || (!isCompanyMode && !hasParents)}>
               <Plus className="h-4 w-4 mr-2" />
-              {selectedTeamId ? "Add Team Objective" : "Add Company-level Objective"}
+              {isCompanyMode ? "Add Company-level Objective" : "Add Team Objective"}
             </Button>
           </div>
         </CardContent>
@@ -625,31 +843,95 @@ export default function CompanyOKRs() {
           {teams.map((team) => {
             const key = team.team_id ?? "unassigned";
             const isOpen = openTeams[key] ?? true;
+            const isUnassigned = !team.team_id;
+
+            const objectiveList: Objective[] = isUnassigned
+              ? companyLevelOptions.map((p) => {
+                  const parentProgress = parentProgressById[p.id] ?? 0;
+                  const children = safeArray(childrenByParentId[p.id]).sort((a, b) => clamp01(b.progress) - clamp01(a.progress));
+
+                  return {
+                    id: p.id,
+                    title: p.title,
+                    progress: parentProgress,
+                    parent_id: null,
+                    parent_weight: null,
+                    timeline: undefined,
+                    // NOTE: these are "child objectives", not true KRs => we won't show comments here
+                    key_results: children.map((c) => ({
+                      id: c.id,
+                      title: `${c.title}: ${c.team_name ?? "Unassigned"}`,
+                      status: krStatusFromProgress(c.progress),
+                      progress: clamp01(c.progress),
+                      weight: Number(c.parent_weight ?? 0) || 1,
+                    })),
+                  };
+                })
+              : safeArray(team.objectives);
+
+            const q = query.trim().toLowerCase();
+            const filteredObjectives = q
+              ? objectiveList.filter((o) => {
+                  const inObj = o.title.toLowerCase().includes(q);
+                  const inKrs = safeArray(o.key_results).some((k) => k.title.toLowerCase().includes(q));
+                  return inObj || inKrs;
+                })
+              : objectiveList;
+
+            const filteredObjectives2 = onlyAttention
+              ? filteredObjectives.filter((o) => {
+                  const tl = o.timeline;
+                  const needs =
+                    (tl?.is_expired ?? false) ||
+                    (tl?.needs_extension_prompt ?? false) ||
+                    clamp01(o.progress) < 20 ||
+                    safeArray(o.key_results).length === 0;
+                  return needs;
+                })
+              : filteredObjectives;
 
             return (
-              <Card key={key} className="border-border">
+              <Card key={key} className={`${GLASS} overflow-hidden`}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div className="space-y-1">
-                    <CardTitle className="text-lg">{team.team_name}</CardTitle>
-                    <CardDescription>Progress is updated by the assigned team.</CardDescription>
+                    <CardTitle className="text-lg">
+                      {isUnassigned ? "Company-level OKRs (Parents)" : team.team_name}
+                    </CardTitle>
+                    <CardDescription>
+                      {isUnassigned
+                        ? "Company-level (parent) OKRs. Each child row shows assigned team + progress."
+                        : "Progress is updated by the assigned team."}
+                    </CardDescription>
                   </div>
 
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setOpenTeams((p) => ({ ...p, [key]: !isOpen }))}
-                    className="h-8 w-8"
-                  >
-                    {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {!isUnassigned ? (
+                      <Pill>
+                        Objectives:{" "}
+                        <span className="ml-1 font-medium text-foreground">{safeArray(team.objectives).length}</span>
+                      </Pill>
+                    ) : null}
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setOpenTeams((p) => ({ ...p, [key]: !isOpen }))}
+                      className="h-8 w-8"
+                    >
+                      {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </CardHeader>
 
                 {isOpen && (
                   <CardContent className="space-y-6">
-                    {safeArray(team.objectives).length === 0 ? (
-                      <EmptyState title="No objectives" description="Add an objective for this team." />
+                    {filteredObjectives2.length === 0 ? (
+                      <EmptyState
+                        title={isUnassigned ? "No company-level objectives" : "No objectives match filters"}
+                        description={isUnassigned ? "Add a company-level (parent) objective above." : "Try clearing search/attention."}
+                      />
                     ) : (
-                      safeArray(team.objectives).map((obj) => {
+                      filteredObjectives2.map((obj) => {
                         const tl = obj.timeline;
                         const draft = tlDraftByObj[obj.id] || { start: "", end: "" };
                         const isSavingTl = !!isSavingTimelineByObj[obj.id];
@@ -665,235 +947,303 @@ export default function CompanyOKRs() {
                         const isParentWeightDirty = isChild && draftParentWeight !== serverParentWeight;
 
                         const parentTitle = obj.parent_id ? parentTitleById[obj.parent_id] : "";
+                        const isObjOpen = openObjectiveById[obj.id] ?? true;
+
+                        const objectiveNeedsAttention =
+                          (!isUnassigned && ((tl?.is_expired ?? false) || (tl?.needs_extension_prompt ?? false))) ||
+                          clamp01(obj.progress) < 20;
 
                         return (
-                          <div key={obj.id} className="space-y-3 rounded-lg border border-border p-4">
-                            {/* Objective header */}
-                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                              <div className="space-y-1">
-                                <div className="font-semibold">{obj.title}</div>
+                          <div key={obj.id} className={`rounded-2xl ${GLASS} p-4`}>
+                            <button
+                              type="button"
+                              onClick={() => setOpenObjectiveById((p) => ({ ...p, [obj.id]: !isObjOpen }))}
+                              className="w-full text-left"
+                            >
+                              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                <div className="space-y-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <div className="font-semibold truncate">{obj.title}</div>
+                                    {objectiveNeedsAttention ? <Pill tone="amber">Attention</Pill> : <Pill tone="emerald">OK</Pill>}
+                                  </div>
 
-                                {/* ✅ Parent link + editable parent weight */}
-                                {isChild ? (
-                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                  {!isUnassigned && isChild ? (
                                     <div className="text-xs text-muted-foreground">
-                                      Parent: <span className="font-medium">{parentTitle || obj.parent_id}</span>
+                                      Parent:{" "}
+                                      <span className="font-medium text-foreground">{parentTitle || obj.parent_id}</span>
                                     </div>
+                                  ) : (
+                                    <div className="text-xs text-muted-foreground">
+                                      {isUnassigned ? "Company-level Objective (Parent)" : "Team Objective"}
+                                    </div>
+                                  )}
+                                </div>
 
-                                    <div className="flex items-center gap-2">
-                                      <div className="text-xs text-muted-foreground">Objective Weight:</div>
+                                <div className="shrink-0 text-right">
+                                  <Pill>
+                                    Progress:{" "}
+                                    <span className="ml-1 font-medium text-foreground">{Math.round(clamp01(obj.progress))}%</span>
+                                  </Pill>
+                                  <div className="mt-2 w-48 max-w-full">
+                                    <ProgressBar value={obj.progress ?? 0} />
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
 
-                                      <Input
-                                        className="h-8 w-24"
-                                        type="number"
-                                        min={1}
-                                        max={100}
-                                        value={draftParentWeight}
-                                        onChange={(e) =>
-                                          setParentWeightDraftByObj((p) => ({
-                                            ...p,
-                                            [obj.id]: Number(e.target.value || 1),
-                                          }))
-                                        }
-                                      />
+                            {isObjOpen && (
+                              <div className="mt-4 space-y-4">
+                                {!isUnassigned && isChild && (
+                                  <div className={`rounded-xl ${GLASS_SUB} p-3`}>
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                      <div className="text-sm font-medium">Objective weight under parent</div>
 
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={!isParentWeightDirty || isSavingPW || isSaving}
-                                        onClick={() => saveObjectiveParentWeight(obj.id, draftParentWeight)}
-                                      >
-                                        <Save className="h-4 w-4 mr-2" />
-                                        Save
-                                      </Button>
+                                      <div className="flex items-center gap-2">
+                                        <Input
+                                          className="h-8 w-24"
+                                          type="number"
+                                          min={1}
+                                          max={100}
+                                          value={draftParentWeight}
+                                          onChange={(e) =>
+                                            setParentWeightDraftByObj((p) => ({
+                                              ...p,
+                                              [obj.id]: Number(e.target.value || 1),
+                                            }))
+                                          }
+                                        />
+
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={!isParentWeightDirty || isSavingPW || isSaving}
+                                          onClick={() => saveObjectiveParentWeight(obj.id, draftParentWeight)}
+                                        >
+                                          <Save className="h-4 w-4 mr-2" />
+                                          Save
+                                        </Button>
+                                      </div>
                                     </div>
                                   </div>
-                                ) : (
-                                  <div className="text-xs text-muted-foreground">
-                                    {team.team_id ? "Team Objective" : "Company Objective"}
+                                )}
+
+                                {!isUnassigned && (
+                                  <div className={`rounded-xl ${GLASS_SUB} p-3 space-y-2`}>
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div className="text-sm font-medium">Objective Timeline</div>
+
+                                      {tl ? (
+                                        <div className="flex flex-wrap gap-2">
+                                          <Pill tone={tl.is_expired ? "amber" : "emerald"}>
+                                            {tl.is_expired ? "Expired" : "Active"}
+                                          </Pill>
+                                          {tl.needs_extension_prompt ? <Pill tone="amber">Extension recommended</Pill> : null}
+                                          <Pill>
+                                            Days left:{" "}
+                                            <span className="ml-1 font-medium text-foreground">{tl.days_remaining}</span>
+                                          </Pill>
+                                        </div>
+                                      ) : (
+                                        <Pill>Timeline not available</Pill>
+                                      )}
+                                    </div>
+
+                                    <div className="grid gap-3 sm:grid-cols-3">
+                                      <div className="space-y-1">
+                                        <div className="text-xs text-muted-foreground">Start</div>
+                                        <Input
+                                          type="date"
+                                          value={draft.start}
+                                          onChange={(e) =>
+                                            setTlDraftByObj((p) => ({
+                                              ...p,
+                                              [obj.id]: { ...draft, start: e.target.value },
+                                            }))
+                                          }
+                                        />
+                                      </div>
+
+                                      <div className="space-y-1">
+                                        <div className="text-xs text-muted-foreground">End</div>
+                                        <Input
+                                          type="date"
+                                          value={draft.end}
+                                          onChange={(e) =>
+                                            setTlDraftByObj((p) => ({
+                                              ...p,
+                                              [obj.id]: { ...draft, end: e.target.value },
+                                            }))
+                                          }
+                                        />
+                                      </div>
+
+                                      <div className="flex items-end">
+                                        <Button onClick={() => saveObjectiveTimeline(obj.id)} disabled={!isTlDirty || isSavingTl || isSaving}>
+                                          <Save className="h-4 w-4 mr-2" />
+                                          Save
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="text-sm font-medium">
+                                      {isUnassigned ? "Assigned Team Objectives (Children)" : "Key Results"}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">{safeArray(obj.key_results).length} items</div>
+                                  </div>
+
+                                  {safeArray(obj.key_results).length === 0 ? (
+                                    <div className={`rounded-xl ${GLASS_SUB} p-3 text-sm text-muted-foreground`}>
+                                      {isUnassigned ? "No child objectives linked yet." : "No key results yet."}
+                                    </div>
+                                  ) : (
+                                    <ul className="space-y-2">
+                                      {safeArray(obj.key_results).map((kr) => {
+                                        const s = statusLabel(kr.status);
+
+                                        const serverKRWeight = Number(kr.weight ?? 1);
+                                        const draftKRWeight = Number(krWeightDraftById[kr.id] ?? serverKRWeight);
+                                        const isSavingKrW = !!isSavingKrWeightById[kr.id];
+                                        const isKrWeightDirty = draftKRWeight !== serverKRWeight;
+
+                                        // ✅ comments for this KR (newest-first already)
+                                        const comments = krUpdatesByKrId[kr.id] ?? [];
+                                        const commentsCount = comments.length;
+                                        const latest = comments[0];
+
+                                        return (
+                                          <li key={kr.id} className={`rounded-xl ${GLASS_SUB} p-3`}>
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                              <div className="min-w-0">
+                                                <div className="text-sm font-medium truncate">{kr.title}</div>
+                                                <div className={`text-xs ${s.cls} mt-1`}>
+                                                  {s.text} • {Math.round(clamp01(kr.progress))}%
+                                                </div>
+                                                <div className="mt-2 w-56 max-w-full">
+                                                  <ProgressBar value={kr.progress} />
+                                                </div>
+
+                                                {/* ✅ Comments button (only for real KRs; hide in "unassigned" parent view) */}
+                                                {!isUnassigned && (
+                                                  <div className="mt-3 flex items-center gap-2">
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      onClick={() => setActiveKr({ id: kr.id, title: kr.title })}
+                                                    >
+                                                      <MessageSquare className="h-4 w-4 mr-2" />
+                                                      Comments {commentsCount > 0 ? `(${commentsCount})` : ""}
+                                                    </Button>
+
+                                                    {isLoadingKrUpdates ? (
+                                                      <span className="text-xs text-muted-foreground flex items-center gap-2">
+                                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                                        loading…
+                                                      </span>
+                                                    ) : commentsCount > 0 ? (
+                                                      <span className="text-xs text-muted-foreground truncate max-w-[360px]">
+                                                        Latest: {latest?.note}
+                                                      </span>
+                                                    ) : (
+                                                      <span className="text-xs text-muted-foreground">No comments yet</span>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+
+                                              {isUnassigned ? (
+                                                <div className="text-xs text-muted-foreground">
+                                                  Weight: <span className="font-medium text-foreground">{serverKRWeight}</span>
+                                                </div>
+                                              ) : (
+                                                <div className="flex flex-col sm:items-end gap-2">
+                                                  <div className="flex items-center gap-2">
+                                                    <div className="text-xs text-muted-foreground">Weight:</div>
+
+                                                    <Input
+                                                      className="h-8 w-24"
+                                                      type="number"
+                                                      min={1}
+                                                      max={100}
+                                                      value={draftKRWeight}
+                                                      onChange={(e) =>
+                                                        setKrWeightDraftById((p) => ({
+                                                          ...p,
+                                                          [kr.id]: Number(e.target.value || 1),
+                                                        }))
+                                                      }
+                                                    />
+
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      disabled={!isKrWeightDirty || isSavingKrW || isSaving}
+                                                      onClick={() => saveKRWeight(kr.id, draftKRWeight)}
+                                                    >
+                                                      <Save className="h-4 w-4 mr-2" />
+                                                      Save
+                                                    </Button>
+                                                  </div>
+
+                                                  <div className="text-xs text-muted-foreground">Progress updated by team</div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  )}
+                                </div>
+
+                                {!isUnassigned && (
+                                  <div className={`rounded-xl ${GLASS_SUB} p-3`}>
+                                    <div className="text-sm font-medium mb-2">Add Key Result</div>
+
+                                    <div className="grid gap-2 sm:grid-cols-7">
+                                      <div className="sm:col-span-4">
+                                        <Input
+                                          value={krDraftByObjective[obj.id] ?? ""}
+                                          onChange={(e) =>
+                                            setKrDraftByObjective((prev) => ({
+                                              ...prev,
+                                              [obj.id]: e.target.value,
+                                            }))
+                                          }
+                                          placeholder="Key result title..."
+                                        />
+                                      </div>
+
+                                      <div className="sm:col-span-2">
+                                        <Input
+                                          type="number"
+                                          min={1}
+                                          max={100}
+                                          value={krWeightByObjective[obj.id] ?? 1}
+                                          onChange={(e) =>
+                                            setKrWeightByObjective((prev) => ({
+                                              ...prev,
+                                              [obj.id]: Number(e.target.value || 1),
+                                            }))
+                                          }
+                                          placeholder="Weight (1-100)"
+                                        />
+                                      </div>
+
+                                      <div className="sm:col-span-1">
+                                        <Button className="w-full" onClick={() => addKeyResult(obj.id)} disabled={isSaving}>
+                                          <Plus className="h-4 w-4 mr-2" />
+                                          Add
+                                        </Button>
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
                               </div>
-
-                              <div className="text-sm text-muted-foreground">{obj.progress ?? 0}%</div>
-                            </div>
-
-                            {/* Objective Timeline */}
-                            <div className="rounded-md border border-border p-3 space-y-2">
-                              <div className="text-sm font-medium">Objective Timeline</div>
-
-                              <div className="grid gap-3 sm:grid-cols-3">
-                                <div className="space-y-1">
-                                  <div className="text-xs text-muted-foreground">Start</div>
-                                  <Input
-                                    type="date"
-                                    value={draft.start}
-                                    onChange={(e) =>
-                                      setTlDraftByObj((p) => ({
-                                        ...p,
-                                        [obj.id]: { ...draft, start: e.target.value },
-                                      }))
-                                    }
-                                  />
-                                </div>
-
-                                <div className="space-y-1">
-                                  <div className="text-xs text-muted-foreground">End</div>
-                                  <Input
-                                    type="date"
-                                    value={draft.end}
-                                    onChange={(e) =>
-                                      setTlDraftByObj((p) => ({
-                                        ...p,
-                                        [obj.id]: { ...draft, end: e.target.value },
-                                      }))
-                                    }
-                                  />
-                                </div>
-
-                                <div className="flex items-end">
-                                  <Button onClick={() => saveObjectiveTimeline(obj.id)} disabled={!isTlDirty || isSavingTl || isSaving}>
-                                    Save
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <div className="text-sm">
-                                {tl ? (
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-muted-foreground">
-                                      Days remaining: <span className="font-medium">{tl.days_remaining}</span>
-                                    </span>
-
-                                    {tl.is_expired ? (
-                                      <span className="rounded-md border px-2 py-1 text-xs text-red-600">Expired</span>
-                                    ) : (
-                                      <span className="rounded-md border px-2 py-1 text-xs text-emerald-600">Active</span>
-                                    )}
-
-                                    {tl.needs_extension_prompt ? (
-                                      <span className="rounded-md border px-2 py-1 text-xs text-amber-600">Extension recommended</span>
-                                    ) : null}
-                                  </div>
-                                ) : (
-                                  <span className="text-muted-foreground">Timeline not available.</span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Progress bar */}
-                            <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                              <div
-                                className="h-2 rounded-full bg-primary"
-                                style={{ width: `${Math.min(100, Math.max(0, obj.progress ?? 0))}%` }}
-                              />
-                            </div>
-
-                            {/* Key results list */}
-                            <div className="space-y-2">
-                              <div className="text-sm font-medium">Key Results</div>
-
-                              {safeArray(obj.key_results).length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No key results yet.</p>
-                              ) : (
-                                <ul className="space-y-2">
-                                  {safeArray(obj.key_results).map((kr) => {
-                                    const s = statusLabel(kr.status);
-
-                                    const serverKRWeight = Number(kr.weight ?? 1);
-                                    const draftKRWeight = Number(krWeightDraftById[kr.id] ?? serverKRWeight);
-                                    const isSavingKrW = !!isSavingKrWeightById[kr.id];
-                                    const isKrWeightDirty = draftKRWeight !== serverKRWeight;
-
-                                    return (
-                                      <li
-                                        key={kr.id}
-                                        className="flex flex-col gap-3 rounded-md border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
-                                      >
-                                        <div className="flex flex-col gap-1">
-                                          <div className="text-sm font-medium">{kr.title}</div>
-                                          <div className={`text-xs ${s.cls}`}>
-                                            {s.text} • {kr.progress ?? 0}%
-                                          </div>
-                                        </div>
-
-                                        {/* ✅ CEO editable KR weight */}
-                                        <div className="flex flex-col sm:items-end gap-2">
-                                          <div className="flex items-center gap-2">
-                                            <div className="text-xs text-muted-foreground">Weight:</div>
-
-                                            <Input
-                                              className="h-8 w-24"
-                                              type="number"
-                                              min={1}
-                                              max={100}
-                                              value={draftKRWeight}
-                                              onChange={(e) =>
-                                                setKrWeightDraftById((p) => ({
-                                                  ...p,
-                                                  [kr.id]: Number(e.target.value || 1),
-                                                }))
-                                              }
-                                            />
-
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              disabled={!isKrWeightDirty || isSavingKrW || isSaving}
-                                              onClick={() => saveKRWeight(kr.id, draftKRWeight)}
-                                            >
-                                              <Save className="h-4 w-4 mr-2" />
-                                              Save
-                                            </Button>
-                                          </div>
-
-                                          <div className="text-xs text-muted-foreground">Progress updated by team</div>
-                                        </div>
-                                      </li>
-                                    );
-                                  })}
-                                </ul>
-                              )}
-                            </div>
-
-                            {/* Add KR (with weight) */}
-                            <div className="grid gap-2 sm:grid-cols-7 pt-2">
-                              <div className="sm:col-span-4">
-                                <Input
-                                  value={krDraftByObjective[obj.id] ?? ""}
-                                  onChange={(e) =>
-                                    setKrDraftByObjective((prev) => ({
-                                      ...prev,
-                                      [obj.id]: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Add a key result..."
-                                />
-                              </div>
-
-                              <div className="sm:col-span-2">
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  max={100}
-                                  value={krWeightByObjective[obj.id] ?? 1}
-                                  onChange={(e) =>
-                                    setKrWeightByObjective((prev) => ({
-                                      ...prev,
-                                      [obj.id]: Number(e.target.value || 1),
-                                    }))
-                                  }
-                                  placeholder="Weight (1-100)"
-                                />
-                              </div>
-
-                              <div className="sm:col-span-1">
-                                <Button className="w-full" onClick={() => addKeyResult(obj.id)} disabled={isSaving}>
-                                  <Plus className="h-4 w-4 mr-2" />
-                                  Add
-                                </Button>
-                              </div>
-                            </div>
+                            )}
                           </div>
                         );
                       })
@@ -905,6 +1255,56 @@ export default function CompanyOKRs() {
           })}
         </div>
       )}
+
+      {/* ✅ KR Comments Dialog */}
+      <Dialog open={!!activeKr} onOpenChange={(v) => !v && setActiveKr(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>KR Comments</DialogTitle>
+          </DialogHeader>
+
+          {!activeKr ? null : (
+            <div className="space-y-3">
+              <div className="text-sm font-medium">{activeKr.title}</div>
+
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-muted-foreground">
+                  Total: {(krUpdatesByKrId[activeKr.id]?.length ?? 0)}
+                </div>
+
+                <Button size="sm" variant="outline" onClick={loadAllKrUpdates} disabled={isLoadingKrUpdates}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+
+              <div className="max-h-[420px] overflow-auto space-y-2 pr-1">
+                {(krUpdatesByKrId[activeKr.id] ?? []).length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No comments yet.</div>
+                ) : (
+                  (krUpdatesByKrId[activeKr.id] ?? []).map((u) => (
+                    <div key={u.id} className={`rounded-xl ${GLASS_SUB} p-3`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs text-muted-foreground">
+                          {u.week_label ?? u.week_id}
+                          {" • "}
+                          {u.author?.name ?? "Unknown"}
+                          {u.team?.name ? ` • ${u.team.name}` : ""}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(u.created_at).toLocaleString()}
+                        </div>
+                      </div>
+
+                      <div className="mt-2 text-sm whitespace-pre-wrap">{u.note}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
