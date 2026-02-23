@@ -1,8 +1,10 @@
-// import { useState, useEffect, useCallback } from 'react';
+
+// import { useState, useEffect, useCallback, useMemo } from 'react';
 // import { useNavigate } from 'react-router-dom';
-// import { FormField, WeeklyReport, Week } from '@/types';
+// import { FormField, Week } from '@/types';
 // import { useAuth } from '@/contexts/AuthContext';
-// import * as api from '@/lib/mock-api';
+// import { apiFetch } from '@/api/client';
+
 // import { DynamicFormRenderer } from '@/components/shared/DynamicFormRenderer';
 // import { WeekSelector } from '@/components/shared/WeekSelector';
 // import { LoadingState } from '@/components/shared/LoadingState';
@@ -15,6 +17,60 @@
 // import { Eye, FileText, CheckCircle } from 'lucide-react';
 // import { toast } from 'sonner';
 
+// // --------------------
+// // Backend types
+// // --------------------
+// type CurrentWeekResponse = {
+//   week_id: string;
+//   start_date: string; // ISO
+//   end_date: string; // ISO
+//   display_label: string;
+// };
+
+// type MeResponse = {
+//   id: string;
+//   name: string;
+//   email: string;
+//   role: string;
+//   team: { id: string; name: string; leader_id: string | null } | null;
+// };
+
+// type ActiveFormResponse = {
+//   id: string;
+//   scope: 'member' | 'leader';
+//   team_id: string | null;
+//   leader_id: string | null;
+//   version: number;
+//   is_active: boolean;
+//   fields: FormField[];
+//   created_at: string;
+//   updated_at: string;
+// };
+
+// type ReportStatus = 'draft' | 'submitted';
+
+// type MyReportResponse = {
+//   item: {
+//     id: string;
+//     status: ReportStatus;
+//     submitted_at: string | null;
+//     payload: Record<string, unknown>;
+//     form_id: string;
+//   } | null;
+// };
+
+// // --------------------
+// // Helpers
+// // --------------------
+// function toWeek(w: CurrentWeekResponse): Week {
+//   return {
+//     isoWeekId: w.week_id,
+//     weekStartDate: new Date(w.start_date),
+//     weekEndDate: new Date(w.end_date),
+//     displayLabel: w.display_label ?? w.week_id,
+//   };
+// }
+
 // // Default leader form fields (fallback if no form is configured)
 // const defaultLeaderFormFields: FormField[] = [
 //   { id: 'accomplishments', type: 'textarea', label: 'Key Accomplishments This Week', placeholder: "List your team's main achievements...", required: true },
@@ -26,43 +82,97 @@
 
 // export default function LeaderSubmitReport() {
 //   const { user } = useAuth();
+//   const userEmail = user?.email;
 //   const navigate = useNavigate();
-//   const [selectedWeek, setSelectedWeek] = useState<Week>(api.getCurrentWeek());
+
+//   const [weeks, setWeeks] = useState<Week[]>([]);
+//   const [selectedWeek, setSelectedWeek] = useState<Week | null>(null);
+
 //   const [baseFormFields, setBaseFormFields] = useState<FormField[]>([]);
 //   const [extraFields, setExtraFields] = useState<FormField[]>([]);
 //   const [formId, setFormId] = useState<string>('');
-//   const [existingReport, setExistingReport] = useState<WeeklyReport | null>(null);
+
+//   const [existingReport, setExistingReport] = useState<{
+//     id: string;
+//     status: ReportStatus;
+//     submittedAt: string | null;
+//     payload: Record<string, unknown>;
+//   } | null>(null);
+
 //   const [isLoading, setIsLoading] = useState(true);
 //   const [isSubmitting, setIsSubmitting] = useState(false);
 //   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-//   // Combined fields for form rendering
-//   const allFormFields = [...baseFormFields, ...extraFields];
+//   const allFormFields = useMemo(() => [...baseFormFields, ...extraFields], [baseFormFields, extraFields]);
+
+//   // Boot: load current week (until /weeks list exists)
+//   useEffect(() => {
+//     const boot = async () => {
+//       if (!userEmail) return;
+
+//       setIsLoading(true);
+//       try {
+//         const cw = await apiFetch<CurrentWeekResponse>('/weeks/current');
+//         const currentWeek = toWeek(cw);
+//         setSelectedWeek(currentWeek);
+//         setWeeks([currentWeek]);
+//       } catch (err) {
+//         console.error('Failed to load current week:', err);
+//         toast.error('Failed to load current week');
+//       } finally {
+//         setIsLoading(false);
+//       }
+//     };
+
+//     boot();
+//   }, [userEmail]);
 
 //   const loadData = useCallback(async () => {
+//     if (!userEmail) return;
 //     if (!user?.teamId) return;
-    
+//     if (!selectedWeek?.isoWeekId) return;
+
 //     setIsLoading(true);
 //     try {
-//       // Load active form - first check for leader-specific, then default
-//       const form = await api.getActiveLeaderForm(user.id);
-//       if (form) {
-//         setBaseFormFields(form.fields);
-//         setFormId(form.id);
-//       } else {
-//         // Use default form if none configured
-//         setBaseFormFields(defaultLeaderFormFields);
-//         setFormId('default_leader_form');
-//       }
+//       const me = await apiFetch<MeResponse>('/me');
+//       const weekId = selectedWeek.isoWeekId;
 
-//       // Check for existing report
-//       const report = await api.getReportForWeek(selectedWeek.isoWeekId, user.id, 'leader');
-//       setExistingReport(report);
-      
-//       // Load extra fields from existing draft/report
-//       if (report?.payload?._extraFields) {
-//         setExtraFields(report.payload._extraFields as FormField[]);
+//       // 1) Load active leader form for THIS leader id (this is what CEO edits)
+//       try {
+//   const form = await apiFetch<ActiveFormResponse>(
+//     `/forms/active?scope=leader&leader_id=${encodeURIComponent(me.id)}`
+//   );
+//   setBaseFormFields(form.fields ?? defaultLeaderFormFields);
+//   setFormId(form.id);
+// } catch (err: any) {
+//   // Only fallback on 404 (no active schema)
+//   const status = err?.status || err?.response?.status;
+//   if (status === 404) {
+//     setBaseFormFields(defaultLeaderFormFields);
+//     setFormId('default_leader_form');
+//   } else {
+//     throw err; // real error (auth/db)
+//   }
+// }
+
+
+//       // 2) Existing report draft/submitted
+//       const my = await apiFetch<MyReportResponse>(
+//         `/reports/me?week_id=${encodeURIComponent(weekId)}&report_type=leader`
+//       );
+
+//       if (my.item) {
+//         setExistingReport({
+//           id: my.item.id,
+//           status: my.item.status,
+//           submittedAt: my.item.submitted_at ?? null,
+//           payload: my.item.payload ?? {},
+//         });
+
+//         const extras = (my.item.payload?._extraFields as FormField[] | undefined) ?? [];
+//         setExtraFields(extras);
 //       } else {
+//         setExistingReport(null);
 //         setExtraFields([]);
 //       }
 //     } catch (error) {
@@ -71,62 +181,66 @@
 //     } finally {
 //       setIsLoading(false);
 //     }
-//   }, [user?.id, user?.teamId, selectedWeek.isoWeekId]);
+//   }, [userEmail, user?.teamId, selectedWeek?.isoWeekId]);
 
 //   useEffect(() => {
 //     loadData();
 //   }, [loadData]);
 
-//   const handleSaveDraft = useCallback(async (values: Record<string, unknown>) => {
-//     if (!user?.teamId) return;
+//   const handleSaveDraft = useCallback(
+//     async (values: Record<string, unknown>) => {
+//       if (!selectedWeek?.isoWeekId) return;
 
-//     try {
-//       // Store extra fields in the payload
-//       const payloadWithExtras = {
-//         ...values,
-//         _extraFields: extraFields,
-//       };
-      
-//       await api.saveDraft(
-//         selectedWeek.isoWeekId,
-//         user.id,
-//         user.teamId,
-//         'leader',
-//         formId,
-//         allFormFields,
-//         payloadWithExtras
-//       );
-//       setLastSaved(new Date());
-//     } catch (error) {
-//       console.error('Failed to save draft:', error);
-//     }
-//   }, [user?.id, user?.teamId, selectedWeek.isoWeekId, formId, allFormFields, extraFields]);
+//       try {
+//         const payloadWithExtras = { ...values, _extraFields: extraFields };
+
+//         await apiFetch('/reports/draft', {
+//           method: 'POST',
+//           body: JSON.stringify({
+//             week_id: selectedWeek.isoWeekId,
+//             report_type: 'leader',
+//             form_id: formId,
+//             payload: payloadWithExtras,
+//           }),
+//         });
+
+//         setLastSaved(new Date());
+//         toast.success('Draft saved');
+//       } catch (error) {
+//         console.error('Failed to save draft:', error);
+//         toast.error('Failed to save draft');
+//       }
+//     },
+//     [selectedWeek?.isoWeekId, formId, extraFields]
+//   );
 
 //   const handleSubmit = async (values: Record<string, unknown>) => {
-//     if (!user?.teamId) return;
+//     if (!selectedWeek?.isoWeekId) return;
 
 //     setIsSubmitting(true);
 //     try {
-//       // Store extra fields in the payload
-//       const payloadWithExtras = {
-//         ...values,
-//         _extraFields: extraFields,
-//       };
-      
-//       // Save draft first
-//       const draft = await api.saveDraft(
-//         selectedWeek.isoWeekId,
-//         user.id,
-//         user.teamId,
-//         'leader',
-//         formId,
-//         allFormFields,
-//         payloadWithExtras
-//       );
+//       const payloadWithExtras = { ...values, _extraFields: extraFields };
 
-//       // Submit the report
-//       await api.submitReport(draft.id);
-      
+//       // Save draft first (upsert)
+//       await apiFetch('/reports/draft', {
+//         method: 'POST',
+//         body: JSON.stringify({
+//           week_id: selectedWeek.isoWeekId,
+//           report_type: 'leader',
+//           form_id: formId,
+//           payload: payloadWithExtras,
+//         }),
+//       });
+
+//       // Submit
+//       await apiFetch('/reports/submit', {
+//         method: 'POST',
+//         body: JSON.stringify({
+//           week_id: selectedWeek.isoWeekId,
+//           report_type: 'leader',
+//         }),
+//       });
+
 //       toast.success('Report submitted successfully!');
 //       navigate('/leader');
 //     } catch (error) {
@@ -148,11 +262,11 @@
 //     );
 //   }
 
-//   if (isLoading) {
+//   if (isLoading || !selectedWeek) {
 //     return <LoadingState message="Loading report form..." />;
 //   }
 
-//   // Already submitted for this week
+//   // Already submitted
 //   if (existingReport?.status === 'submitted') {
 //     return (
 //       <div className="p-6 max-w-3xl mx-auto">
@@ -169,7 +283,7 @@
 //           <CardContent className="flex flex-col items-center gap-4">
 //             <StatusPill status="submitted" />
 //             <p className="text-sm text-muted-foreground">
-//               Submitted on {existingReport.submittedAt?.toLocaleDateString()}
+//               Submitted on {existingReport.submittedAt ? new Date(existingReport.submittedAt).toLocaleDateString() : '—'}
 //             </p>
 //             <div className="flex gap-3">
 //               <Button variant="outline" onClick={() => navigate('/leader')}>
@@ -184,10 +298,7 @@
 //         </Card>
 
 //         <div className="mt-6">
-//           <WeekSelector
-//             selectedWeek={selectedWeek}
-//             onWeekChange={setSelectedWeek}
-//           />
+//           <WeekSelector weeks={weeks} selectedWeek={selectedWeek} onWeekChange={setSelectedWeek} />
 //         </div>
 //       </div>
 //     );
@@ -201,14 +312,10 @@
 //             <FileText className="h-6 w-6" />
 //             Submit Weekly Report
 //           </h1>
-//           <p className="text-muted-foreground mt-1">
-//             {selectedWeek.displayLabel}
-//           </p>
+//           <p className="text-muted-foreground mt-1">{selectedWeek.displayLabel}</p>
 //         </div>
-//         <WeekSelector
-//           selectedWeek={selectedWeek}
-//           onWeekChange={setSelectedWeek}
-//         />
+
+//         <WeekSelector weeks={weeks} selectedWeek={selectedWeek} onWeekChange={setSelectedWeek} />
 //       </div>
 
 //       {existingReport?.status === 'draft' && (
@@ -227,9 +334,7 @@
 //             <CardDescription>
 //               Fill out your weekly report for your team. Reports auto-save as drafts.
 //               {lastSaved && (
-//                 <span className="block mt-1 text-xs">
-//                   Last saved: {lastSaved.toLocaleTimeString()}
-//                 </span>
+//                 <span className="block mt-1 text-xs">Last saved: {lastSaved.toLocaleTimeString()}</span>
 //               )}
 //             </CardDescription>
 //           </CardHeader>
@@ -246,15 +351,12 @@
 //           </CardContent>
 //         </Card>
 
-//         {/* Extra Fields Builder */}
-//         <ExtraFieldsBuilder
-//           extraFields={extraFields}
-//           onExtraFieldsChange={setExtraFields}
-//         />
+//         <ExtraFieldsBuilder extraFields={extraFields} onExtraFieldsChange={setExtraFields} />
 //       </div>
 //     </div>
 //   );
 // }
+// src/pages/leader/LeaderSubmitReport.tsx
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FormField, Week } from '@/types';
@@ -315,6 +417,23 @@ type MyReportResponse = {
   } | null;
 };
 
+// Team OKRs response (leader)
+type TeamOKRsResponse = {
+  quarter: { quarter_id: string; start_date: string; end_date: string; seconds_remaining: number };
+  team: {
+    team_id: string;
+    team_name: string;
+    objectives: Array<{
+      id: string;
+      title: string;
+      progress: number;
+      key_results: Array<{ id: string; title: string; status: string; progress: number; weight: number }>;
+    }>;
+  };
+};
+
+type KROption = { id: string; label: string };
+
 // --------------------
 // Helpers
 // --------------------
@@ -336,13 +455,50 @@ const defaultLeaderFormFields: FormField[] = [
   { id: 'notes', type: 'textarea', label: 'Additional Notes', placeholder: 'Any other updates...', required: false },
 ];
 
+function valueToNote(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+function buildKrUpdates(
+  values: Record<string, unknown>,
+  fields: FormField[],
+  map: Record<string, string | null>
+) {
+  const updates: Array<Record<string, unknown>> = [];
+
+  for (const f of fields) {
+    const krId = map[f.id];
+    if (!krId) continue; // Extra (not linked)
+
+    const noteValue = valueToNote(values[f.id]);
+    if (!noteValue) continue;
+
+    updates.push({
+      kr_id: krId,
+      note: `[${f.label}] ${noteValue}`,
+      field_id: f.id,
+      field_label: f.label,
+    });
+  }
+
+  return updates;
+}
+
 export default function LeaderSubmitReport() {
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const userEmail = user?.email;
   const navigate = useNavigate();
 
   const [weeks, setWeeks] = useState<Week[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<Week | null>(null);
+  const [weekLoadError, setWeekLoadError] = useState<string | null>(null);
 
   const [baseFormFields, setBaseFormFields] = useState<FormField[]>([]);
   const [extraFields, setExtraFields] = useState<FormField[]>([]);
@@ -355,33 +511,55 @@ export default function LeaderSubmitReport() {
     payload: Record<string, unknown>;
   } | null>(null);
 
+  // KR mapping state
+  const [krOptions, setKrOptions] = useState<KROption[]>([]);
+  const [fieldKrMap, setFieldKrMap] = useState<Record<string, string | null>>({});
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   const allFormFields = useMemo(() => [...baseFormFields, ...extraFields], [baseFormFields, extraFields]);
 
-  // Boot: load current week (until /weeks list exists)
+  // Ensure every field has a default mapping (null => Extra)
   useEffect(() => {
-    const boot = async () => {
-      if (!userEmail) return;
-
-      setIsLoading(true);
-      try {
-        const cw = await apiFetch<CurrentWeekResponse>('/weeks/current');
-        const currentWeek = toWeek(cw);
-        setSelectedWeek(currentWeek);
-        setWeeks([currentWeek]);
-      } catch (err) {
-        console.error('Failed to load current week:', err);
-        toast.error('Failed to load current week');
-      } finally {
-        setIsLoading(false);
+    setFieldKrMap((prev) => {
+      const next = { ...prev };
+      for (const f of allFormFields) {
+        if (!(f.id in next)) next[f.id] = null;
       }
-    };
+      for (const key of Object.keys(next)) {
+        if (!allFormFields.some((f) => f.id === key)) delete next[key];
+      }
+      return next;
+    });
+  }, [allFormFields]);
 
-    boot();
+  // Boot: load current week
+  const loadCurrentWeek = useCallback(async () => {
+    if (!userEmail) return;
+
+    setIsLoading(true);
+    setWeekLoadError(null);
+    try {
+      const cw = await apiFetch<CurrentWeekResponse>('/weeks/current');
+      const currentWeek = toWeek(cw);
+      setSelectedWeek(currentWeek);
+      setWeeks([currentWeek]);
+    } catch (err) {
+      console.error('Failed to load current week:', err);
+      setSelectedWeek(null);
+      setWeeks([]);
+      setWeekLoadError('Failed to load current week');
+      toast.error('Failed to load current week');
+    } finally {
+      setIsLoading(false);
+    }
   }, [userEmail]);
+
+  useEffect(() => {
+    loadCurrentWeek();
+  }, [loadCurrentWeek]);
 
   const loadData = useCallback(async () => {
     if (!userEmail) return;
@@ -393,24 +571,38 @@ export default function LeaderSubmitReport() {
       const me = await apiFetch<MeResponse>('/me');
       const weekId = selectedWeek.isoWeekId;
 
-      // 1) Load active leader form for THIS leader id (this is what CEO edits)
+      // 0) Load team OKRs (KR dropdown options)
       try {
-  const form = await apiFetch<ActiveFormResponse>(
-    `/forms/active?scope=leader&leader_id=${encodeURIComponent(me.id)}`
-  );
-  setBaseFormFields(form.fields ?? defaultLeaderFormFields);
-  setFormId(form.id);
-} catch (err: any) {
-  // Only fallback on 404 (no active schema)
-  const status = err?.status || err?.response?.status;
-  if (status === 404) {
-    setBaseFormFields(defaultLeaderFormFields);
-    setFormId('default_leader_form');
-  } else {
-    throw err; // real error (auth/db)
-  }
-}
+        const okrs = await apiFetch<TeamOKRsResponse>('/okrs/team/current');
+        const opts: KROption[] = [];
 
+        for (const obj of okrs.team?.objectives ?? []) {
+          for (const kr of obj.key_results ?? []) {
+            opts.push({ id: kr.id, label: `${obj.title} — ${kr.title}` });
+          }
+        }
+
+        setKrOptions(opts);
+      } catch {
+        setKrOptions([]); // non-fatal
+      }
+
+      // 1) Load active leader form
+      try {
+        const form = await apiFetch<ActiveFormResponse>(
+          `/forms/active?scope=leader&leader_id=${encodeURIComponent(me.id)}`
+        );
+        setBaseFormFields(form.fields ?? defaultLeaderFormFields);
+        setFormId(form.id);
+      } catch (err: any) {
+        const status = err?.status || err?.response?.status;
+        if (status === 404) {
+          setBaseFormFields(defaultLeaderFormFields);
+          setFormId('default_leader_form');
+        } else {
+          throw err;
+        }
+      }
 
       // 2) Existing report draft/submitted
       const my = await apiFetch<MyReportResponse>(
@@ -427,9 +619,13 @@ export default function LeaderSubmitReport() {
 
         const extras = (my.item.payload?._extraFields as FormField[] | undefined) ?? [];
         setExtraFields(extras);
+
+        const map = (my.item.payload?._fieldKrMap as Record<string, string | null> | undefined) ?? {};
+        setFieldKrMap(map);
       } else {
         setExistingReport(null);
         setExtraFields([]);
+        setFieldKrMap({});
       }
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -448,7 +644,14 @@ export default function LeaderSubmitReport() {
       if (!selectedWeek?.isoWeekId) return;
 
       try {
-        const payloadWithExtras = { ...values, _extraFields: extraFields };
+        const kr_updates = buildKrUpdates(values, allFormFields, fieldKrMap);
+
+        const payloadWithExtras = {
+          ...values,
+          _extraFields: extraFields,
+          _fieldKrMap: fieldKrMap,
+          kr_updates,
+        };
 
         await apiFetch('/reports/draft', {
           method: 'POST',
@@ -467,7 +670,7 @@ export default function LeaderSubmitReport() {
         toast.error('Failed to save draft');
       }
     },
-    [selectedWeek?.isoWeekId, formId, extraFields]
+    [selectedWeek?.isoWeekId, formId, extraFields, allFormFields, fieldKrMap]
   );
 
   const handleSubmit = async (values: Record<string, unknown>) => {
@@ -475,7 +678,14 @@ export default function LeaderSubmitReport() {
 
     setIsSubmitting(true);
     try {
-      const payloadWithExtras = { ...values, _extraFields: extraFields };
+      const kr_updates = buildKrUpdates(values, allFormFields, fieldKrMap);
+
+      const payloadWithExtras = {
+        ...values,
+        _extraFields: extraFields,
+        _fieldKrMap: fieldKrMap,
+        kr_updates,
+      };
 
       // Save draft first (upsert)
       await apiFetch('/reports/draft', {
@@ -507,6 +717,10 @@ export default function LeaderSubmitReport() {
     }
   };
 
+  if (isAuthLoading) {
+    return <LoadingState message="Loading user..." />;
+  }
+
   if (!user?.teamId) {
     return (
       <div className="p-6">
@@ -518,7 +732,23 @@ export default function LeaderSubmitReport() {
     );
   }
 
-  if (isLoading || !selectedWeek) {
+  if (!selectedWeek && !isLoading) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          title="No Active Week"
+          description={weekLoadError ?? 'No active week is available right now.'}
+        />
+        <div className="mt-4">
+          <Button variant="outline" onClick={loadCurrentWeek}>
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
     return <LoadingState message="Loading report form..." />;
   }
 
@@ -539,7 +769,8 @@ export default function LeaderSubmitReport() {
           <CardContent className="flex flex-col items-center gap-4">
             <StatusPill status="submitted" />
             <p className="text-sm text-muted-foreground">
-              Submitted on {existingReport.submittedAt ? new Date(existingReport.submittedAt).toLocaleDateString() : '—'}
+              Submitted on{' '}
+              {existingReport.submittedAt ? new Date(existingReport.submittedAt).toLocaleDateString() : '—'}
             </p>
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => navigate('/leader')}>
@@ -589,11 +820,10 @@ export default function LeaderSubmitReport() {
             <CardTitle>Leader Weekly Report</CardTitle>
             <CardDescription>
               Fill out your weekly report for your team. Reports auto-save as drafts.
-              {lastSaved && (
-                <span className="block mt-1 text-xs">Last saved: {lastSaved.toLocaleTimeString()}</span>
-              )}
+              {lastSaved && <span className="block mt-1 text-xs">Last saved: {lastSaved.toLocaleTimeString()}</span>}
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             <DynamicFormRenderer
               fields={allFormFields}
@@ -603,6 +833,13 @@ export default function LeaderSubmitReport() {
               isSubmitting={isSubmitting}
               submitLabel="Submit Report"
               showDraftButton={true}
+              // ✅ Dropdown beside EACH field
+              showKrSelector={true}
+              krOptions={krOptions}
+              fieldKrMap={fieldKrMap}
+              onFieldKrChange={(fieldId, krId) => {
+                setFieldKrMap((prev) => ({ ...prev, [fieldId]: krId }));
+              }}
             />
           </CardContent>
         </Card>
