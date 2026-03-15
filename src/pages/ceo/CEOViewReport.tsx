@@ -508,7 +508,7 @@ export default function CEOViewReport() {
   // If no row, it means there is no report record (draft/submitted) for that leader+week
   if (!reportRow || !leader) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState
           title="Report Not Found"
           description="No leader report found for the selected week."
@@ -524,7 +524,7 @@ export default function CEOViewReport() {
     : '—';
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="app-page-enter mx-auto max-w-3xl">
       <Button variant="ghost" onClick={() => navigate('/ceo')} className="mb-6">
         <ArrowLeft className="h-4 w-4 mr-2" />
         Back to Dashboard

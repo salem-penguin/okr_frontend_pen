@@ -1,12 +1,21 @@
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { PageBackdrop } from "@/components/layout/PageBackdrop";
+
 // Update this page (the content is just a fallback if you fail to update the page)
 
 const Index = () => {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="relative flex min-h-screen items-center justify-center p-4">
+      <PageBackdrop />
+      <Card className="app-page-enter w-full max-w-2xl text-center">
+        <CardHeader>
+          <CardTitle className="text-3xl">Welcome</CardTitle>
+          <CardDescription className="text-base">
+            Start building your project from this entry page.
+          </CardDescription>
+        </CardHeader>
+        <CardContent />
+      </Card>
     </div>
   );
 };

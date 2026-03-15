@@ -293,7 +293,7 @@ export default function LeaderViewMemberReport() {
 
   if (accessDenied) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState
           title="Access Denied"
           description="You don't have permission to view this report."
@@ -306,7 +306,7 @@ export default function LeaderViewMemberReport() {
 
   if (!report) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState
           title="Report Not Found"
           description="No report found for this team member for the selected week."
@@ -321,7 +321,7 @@ export default function LeaderViewMemberReport() {
   const weekLabel = weekId; // Until you add a week-by-id endpoint
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="app-page-enter mx-auto max-w-3xl">
       <Button variant="ghost" onClick={() => navigate('/leader')} className="mb-6">
         <ArrowLeft className="h-4 w-4 mr-2" />
         Back to Dashboard

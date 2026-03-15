@@ -6,12 +6,14 @@ import {
   CheckCircle,
   XCircle,
   Eye,
+  Mail,
   FileText,
   Sparkles,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import { motion, AnimatePresence, cubicBezier } from "framer-motion";
+import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { Week } from "@/types";
@@ -276,6 +278,9 @@ export default function LeaderDashboard() {
   const [teamOKRs, setTeamOKRs] = useState<TeamObjective[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [sendingReminderForId, setSendingReminderForId] = useState<string | null>(
+    null
+  );
 
   const userEmail = user?.email;
 
@@ -423,6 +428,33 @@ export default function LeaderDashboard() {
     const pct = total ? Math.round((submitted / total) * 100) : 0;
     return { pct, submitted, total };
   }, [data?.kpi.submittedCount, data?.kpi.totalCount]);
+
+  const handleSendReminder = async (memberId: string, memberName: string) => {
+    if (!selectedWeek?.displayLabel) return;
+
+    setSendingReminderForId(memberId);
+    try {
+      await apiFetch<{ success: boolean; member_id: string }>(
+        "/leader/reminders/team-member",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            member_id: memberId,
+            subject: "Reminder: Weekly report pending",
+            message: `Please submit your weekly report for ${selectedWeek.displayLabel}.`,
+          }),
+        }
+      );
+
+      toast.success(`Reminder sent to ${memberName}`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to send reminder";
+      toast.error(message);
+    } finally {
+      setSendingReminderForId(null);
+    }
+  };
 
   if (!user?.teamId) {
     return (
@@ -739,7 +771,7 @@ export default function LeaderDashboard() {
                       {member.submittedAt ? new Date(member.submittedAt).toLocaleDateString() : "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {member.status === "submitted" && (
+                      {member.status === "submitted" ? (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -748,6 +780,18 @@ export default function LeaderDashboard() {
                           }
                         >
                           <Eye className="mr-1 h-4 w-4" /> View
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={sendingReminderForId === member.id}
+                          onClick={() => handleSendReminder(member.id, member.name)}
+                        >
+                          <Mail className="mr-1 h-4 w-4" />
+                          {sendingReminderForId === member.id
+                            ? "Sending..."
+                            : "Reminder"}
                         </Button>
                       )}
                     </TableCell>

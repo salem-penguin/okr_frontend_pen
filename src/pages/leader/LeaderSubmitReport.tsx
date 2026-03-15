@@ -365,7 +365,7 @@ export default function LeaderSubmitReport() {
 
   if (!user?.teamId) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState
           title="No Team Assigned"
           description="You are not assigned to a team. Please contact an administrator."
@@ -376,7 +376,7 @@ export default function LeaderSubmitReport() {
 
   if (!selectedWeek && !isLoading) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState
           title="No Active Week"
           description={weekLoadError ?? 'No active week is available right now.'}
@@ -397,7 +397,7 @@ export default function LeaderSubmitReport() {
   // Already submitted
   if (existingReport?.status === 'submitted') {
     return (
-      <div className="p-6 max-w-3xl mx-auto">
+      <div className="app-page-enter mx-auto max-w-3xl">
         <Card>
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -434,7 +434,7 @@ export default function LeaderSubmitReport() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="app-page-enter mx-auto max-w-3xl">
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">

@@ -17,7 +17,7 @@ export function AppHeader({ title }: AppHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b border-border bg-background px-4">
+    <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b border-border/50 bg-card/60 px-4 backdrop-blur-xl">
       <SidebarTrigger className="-ml-1" />
       
       {title && (

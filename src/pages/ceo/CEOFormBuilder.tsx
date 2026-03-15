@@ -334,7 +334,7 @@ export default function CEOFormBuilder() {
   // Gate (optional, but consistent)
   if (user?.role && user.role !== 'ceo') {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState title="Access Denied" description="This page is available to CEOs only." />
       </div>
     );
@@ -342,7 +342,7 @@ export default function CEOFormBuilder() {
 
   if (leaders.length === 0) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState
           title="No team leaders found"
           description="There are no team leaders configured in the system."
@@ -352,7 +352,7 @@ export default function CEOFormBuilder() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="app-page-enter space-y-6">
       {/* Leader Selector */}
       <Card>
         <CardHeader>

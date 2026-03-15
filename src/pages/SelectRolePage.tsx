@@ -34,7 +34,7 @@ export default function SelectRolePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-4">
+    <div className="app-page-enter mx-auto max-w-2xl space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Select your role</CardTitle>

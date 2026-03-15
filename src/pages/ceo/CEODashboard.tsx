@@ -6,11 +6,13 @@ import {
   CheckCircle,
   XCircle,
   Eye,
+  Mail,
   Sparkles,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import { motion, AnimatePresence, cubicBezier } from "framer-motion";
+import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { Week } from "@/types";
@@ -277,6 +279,9 @@ export default function CEODashboard() {
 
   const [companyOKRs, setCompanyOKRs] = useState<CompanyLevelOKR[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sendingReminderForId, setSendingReminderForId] = useState<string | null>(
+    null
+  );
 
   // ✅ only ONE expanded card at a time
   const [expandedOkrId, setExpandedOkrId] = useState<string | null>(null);
@@ -408,6 +413,33 @@ export default function CEODashboard() {
   const handleViewReport = (leaderId: string) => {
     if (!selectedWeek?.isoWeekId) return;
     navigate(`/ceo/reports/${selectedWeek.isoWeekId}/${leaderId}`);
+  };
+
+  const handleSendReminder = async (leaderId: string, leaderName: string) => {
+    if (!selectedWeek?.displayLabel) return;
+
+    setSendingReminderForId(leaderId);
+    try {
+      await apiFetch<{ success: boolean; leader_id: string }>(
+        "/ceo/reminders/team-leader",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            leader_id: leaderId,
+            subject: "Reminder: Weekly report pending",
+            message: `Please submit your weekly report for ${selectedWeek.displayLabel}.`,
+          }),
+        }
+      );
+
+      toast.success(`Reminder sent to ${leaderName}`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to send reminder";
+      toast.error(message);
+    } finally {
+      setSendingReminderForId(null);
+    }
   };
 
   const headerBadge = useMemo(() => {
@@ -739,13 +771,25 @@ export default function CEODashboard() {
                         : "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {leader.status === "submitted" && (
+                      {leader.status === "submitted" ? (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleViewReport(leader.id)}
                         >
                           <Eye className="mr-1 h-4 w-4" /> View
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={sendingReminderForId === leader.id}
+                          onClick={() => handleSendReminder(leader.id, leader.name)}
+                        >
+                          <Mail className="mr-1 h-4 w-4" />
+                          {sendingReminderForId === leader.id
+                            ? "Sending..."
+                            : "Reminder"}
                         </Button>
                       )}
                     </TableCell>

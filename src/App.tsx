@@ -111,6 +111,7 @@ import CEODashboard from "@/pages/ceo/CEODashboard";
 import CEOFormBuilder from "@/pages/ceo/CEOFormBuilder";
 import CEOViewReport from "@/pages/ceo/CEOViewReport";
 import CompanyOKRs from "@/pages/ceo/CompanyOKRs";
+import OKRAlignment from "@/pages/ceo/OKRAlignment";
 
 import LeaderDashboard from "@/pages/leader/LeaderDashboard";
 import LeaderSubmitReport from "@/pages/leader/LeaderSubmitReport";
@@ -167,6 +168,7 @@ const App = () => (
                 <Route path="/ceo/form-builder" element={<CEOFormBuilder />} />
                 <Route path="/ceo/reports/:weekId/:leaderId" element={<CEOViewReport />} />
                 <Route path="/ceo/okrs" element={<CompanyOKRs />} />
+                <Route path="/ceo/okr-alignment" element={<OKRAlignment />} />
               </Route>
 
               {/* Leader */}

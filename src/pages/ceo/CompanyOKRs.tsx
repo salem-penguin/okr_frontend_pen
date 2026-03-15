@@ -1311,6 +1311,7 @@
 // src/pages/ceo/CompanyOKRs.tsx
 // src/pages/ceo/CompanyOKRs.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -1341,6 +1342,8 @@ import {
   Save,
   MessageSquare,
   Loader2,
+  Search,
+  Target,
 } from "lucide-react";
 
 // --------------------
@@ -1630,6 +1633,7 @@ export default function CompanyOKRs(): React.ReactElement {
   const [openObjectiveById, setOpenObjectiveById] = useState<
     Record<string, boolean>
   >({});
+  const [addFormOpen, setAddFormOpen] = useState<boolean>(false);
 
   const isCompanyMode: boolean = selectedTeamId === COMPANY_SENTINEL;
 
@@ -1641,15 +1645,18 @@ export default function CompanyOKRs(): React.ReactElement {
     const hasUnassigned: boolean = raw.some(
       (t: TeamBlock) => t.team_id === null
     );
-    if (!hasUnassigned && companyLevelOptions.length > 0) {
-      const syntheticBlock: TeamBlock = {
-        team_id: null,
-        team_name: "Company-level OKRs (Parents)",
-        objectives: [],
-      };
-      return [syntheticBlock, ...raw];
-    }
-    return raw;
+    const list: TeamBlock[] = !hasUnassigned && companyLevelOptions.length > 0
+      ? [{ team_id: null, team_name: "Company-level OKRs (Parents)", objectives: [] }, ...raw]
+      : [...raw];
+
+    // Company-level (parent) block always first
+    list.sort((a: TeamBlock, b: TeamBlock) => {
+      if (a.team_id === null && b.team_id !== null) return -1;
+      if (a.team_id !== null && b.team_id === null) return 1;
+      return 0;
+    });
+
+    return list;
   }, [data, companyLevelOptions]);
 
   const parentTitleById: Record<string, string> = useMemo((): Record<
@@ -2216,37 +2223,47 @@ export default function CompanyOKRs(): React.ReactElement {
   // Render
   // --------------------
   return (
-    <div className="relative min-h-screen space-y-6 p-4 md:p-6">
-      {/* Background accents */}
+    <div className="app-page-enter relative min-h-0 space-y-8">
+      {/* Subtle background */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -left-40 -top-40 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute -right-40 top-1/3 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
+        <div className="absolute -left-40 -top-40 h-80 w-80 rounded-full bg-primary/[0.06] blur-3xl" />
+        <div className="absolute -right-40 top-1/3 h-96 w-96 rounded-full bg-primary/[0.04] blur-3xl" />
       </div>
 
-      {/* Header */}
-      <div className={`rounded-2xl p-5 ${GLASS}`}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      {/* Page header: title + metrics + toolbar */}
+      <header className={`rounded-2xl border border-border/60 bg-card/80 backdrop-blur-xl p-5 shadow-sm ring-1 ring-primary/5`}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">Company OKRs</h1>
-              <Pill tone="neutral">{data.quarter.quarter_id}</Pill>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Target className="h-5 w-5" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                  Company OKRs
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {data.quarter.quarter_id} · {data.quarter.start_date} → {data.quarter.end_date}
+                </p>
+              </div>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {data.quarter.start_date} → {data.quarter.end_date} • Time left:{" "}
-              <span className="font-medium text-foreground">{remaining}</span>
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Pill>Parents: {summary.parents}</Pill>
-              <Pill>Children: {summary.children}</Pill>
-              <Pill>Teams: {summary.teams}</Pill>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Time left:</span>
+              <span className="rounded-md bg-muted/80 px-2 py-0.5 text-xs font-semibold text-foreground">
+                {remaining}
+              </span>
+              <span className="text-muted-foreground">·</span>
+              <Pill tone="neutral">Parents {summary.parents}</Pill>
+              <Pill tone="neutral">Children {summary.children}</Pill>
+              <Pill tone="neutral">Teams {summary.teams}</Pill>
               {summary.attention > 0 ? (
-                <Pill tone="amber">Needs attention: {summary.attention}</Pill>
+                <Pill tone="amber">Attention {summary.attention}</Pill>
               ) : (
                 <Pill tone="emerald">Healthy</Pill>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-shrink-0 items-center gap-2">
             <Button variant="outline" size="sm" onClick={load} className="gap-1.5">
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
@@ -2256,149 +2273,174 @@ export default function CompanyOKRs(): React.ReactElement {
               size="sm"
               onClick={() => setOnlyAttention((p: boolean) => !p)}
             >
-              Attention
+              Attention only
             </Button>
           </div>
         </div>
-        <div className="mt-3">
-          <Input
-            value={query}
-            className="max-w-sm"
-            placeholder="Search objectives or key results..."
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setQuery(e.target.value)
-            }
-          />
-        </div>
-      </div>
-
-      {/* Add Objective */}
-      <Card className={GLASS}>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Add new Objective</CardTitle>
-          <CardDescription>
-            Create Company-level OKRs (parents) or Team OKRs (children). Team
-            objectives contribute to a parent via weight.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input
-            value={newObjectiveTitle}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setNewObjectiveTitle(e.target.value)
-            }
-            placeholder="Objective title..."
-          />
-          <div className="flex flex-wrap gap-2">
-            <Select
-              value={selectedTeamId}
-              onValueChange={(v: string) => {
-                setSelectedTeamId(v);
-                if (v !== COMPANY_SENTINEL) {
-                  setSelectedParentId(companyLevelOptions[0]?.id ?? "");
-                } else {
-                  setSelectedParentId("");
-                }
-              }}
-            >
-              <SelectTrigger className="w-56">
-                <SelectValue placeholder="Assign to…" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={COMPANY_SENTINEL}>
-                  Company-level (Parent OKR)
-                </SelectItem>
-                {teamsOptions.map((t: TeamOption) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1 sm:max-w-xs">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              className="pl-9"
+              placeholder="Search objectives or key results…"
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setQuery(e.target.value)
+              }
+            />
           </div>
+        </div>
+      </header>
 
-          {!isCompanyMode ? (
-            <div className="space-y-3">
-              {!hasParents ? (
-                <p className="text-sm text-amber-600 dark:text-amber-400">
-                  You must create at least one Company-level OKR first.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <Select
-                      value={selectedParentId}
-                      onValueChange={setSelectedParentId}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select parent company-level OKR…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {companyLevelOptions.map(
-                          (p: CompanyLevelObjectiveOption) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.title}
-                            </SelectItem>
-                          )
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      This team objective will be linked as a child of the
-                      selected company-level OKR.
-                    </p>
-                  </div>
-                  <div>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={parentWeight}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setParentWeight(Number(e.target.value || 1))
-                      }
-                      placeholder="Parent weight (1-100)"
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Weight of this team objective under the parent (children
-                      total ≤ 100).
-                    </p>
-                  </div>
-                </div>
-              )}
+      {/* Add Objective — collapsible */}
+      <Card className={`overflow-hidden transition-shadow ${GLASS}`}>
+        <button
+          type="button"
+          onClick={() => setAddFormOpen((o) => !o)}
+          className="flex w-full items-center justify-between p-4 text-left hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Plus className="h-4 w-4" />
             </div>
+            <div>
+              <CardTitle className="text-base font-semibold">Add new Objective</CardTitle>
+              <CardDescription className="text-xs">
+                Company-level (parent) or team (child) OKR
+              </CardDescription>
+            </div>
+          </div>
+          {addFormOpen ? (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
           ) : (
-            <p className="text-xs text-muted-foreground">
-              Creating a company-level OKR (parent). Teams' OKRs will be linked
-              to this later.
-            </p>
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
           )}
+        </button>
+        <AnimatePresence initial={false}>
+          {addFormOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <CardContent className="border-t border-border/60 bg-muted/20 pt-4 space-y-4">
+                <Input
+                  value={newObjectiveTitle}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setNewObjectiveTitle(e.target.value)
+                  }
+                  placeholder="Objective title…"
+                  className="max-w-md"
+                />
+                <div className="flex flex-wrap gap-3">
+                  <Select
+                    value={selectedTeamId}
+                    onValueChange={(v: string) => {
+                      setSelectedTeamId(v);
+                      if (v !== COMPANY_SENTINEL) {
+                        setSelectedParentId(companyLevelOptions[0]?.id ?? "");
+                      } else {
+                        setSelectedParentId("");
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-56">
+                      <SelectValue placeholder="Assign to…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={COMPANY_SENTINEL}>
+                        Company-level (Parent OKR)
+                      </SelectItem>
+                      {teamsOptions.map((t: TeamOption) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-          <Button onClick={addObjective} disabled={isSaving} className="gap-1.5">
-            {isSaving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Plus className="h-3.5 w-3.5" />
-            )}
-            {isCompanyMode ? "Add Company-level Objective" : "Add Team Objective"}
-          </Button>
-        </CardContent>
+                {!isCompanyMode ? (
+                  <div className="space-y-3">
+                    {!hasParents ? (
+                      <p className="text-sm text-amber-600 dark:text-amber-400">
+                        Create at least one Company-level OKR first.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-4">
+                        <div className="min-w-[200px] space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Parent OKR</label>
+                          <Select value={selectedParentId} onValueChange={setSelectedParentId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select parent…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {companyLevelOptions.map(
+                                (p: CompanyLevelObjectiveOption) => (
+                                  <SelectItem key={p.id} value={p.id}>
+                                    {p.title}
+                                  </SelectItem>
+                                )
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Weight (1–100)</label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={parentWeight}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              setParentWeight(Number(e.target.value || 1))
+                            }
+                            className="w-24"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Company-level OKR. Team OKRs can be linked to it later.
+                  </p>
+                )}
+
+                <Button onClick={addObjective} disabled={isSaving} className="gap-1.5">
+                  {isSaving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5" />
+                  )}
+                  {isCompanyMode ? "Add Company-level Objective" : "Add Team Objective"}
+                </Button>
+              </CardContent>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </Card>
 
       {/* OKR list */}
-      {teams.length === 0 ? (
-        <EmptyState
-          title="No OKRs yet"
-          description="Add your first objective above."
-        />
-      ) : (
-        <div className="space-y-4">
-          {teams.map((team: TeamBlock) => {
-            const teamKey: string = team.team_id ?? "unassigned";
-            const isOpen: boolean = openTeams[teamKey] ?? true;
-            const isUnassigned: boolean = team.team_id === null;
+      <section className="space-y-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          OKRs by team
+        </h2>
+        {teams.length === 0 ? (
+          <EmptyState
+            title="No OKRs yet"
+            description="Add your first objective using the form above."
+          />
+        ) : (
+          <div className="space-y-4">
+            {teams.map((team: TeamBlock, teamIndex: number) => {
+              const teamKey: string = team.team_id ?? "unassigned";
+              const isOpen: boolean = openTeams[teamKey] ?? true;
+              const isUnassigned: boolean = team.team_id === null;
 
-            const objectiveList: Objective[] = isUnassigned
+              const objectiveList: Objective[] = isUnassigned
               ? companyLevelOptions.map(
                   (p: CompanyLevelObjectiveOption): Objective => {
                     const parentProgress: number =
@@ -2457,50 +2499,64 @@ export default function CompanyOKRs(): React.ReactElement {
               : filteredOnce;
 
             return (
-              <Card key={teamKey} className={GLASS}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <CardTitle className="text-base">
-                        {isUnassigned
-                          ? "Company-level OKRs (Parents)"
-                          : team.team_name}
-                      </CardTitle>
-                      <CardDescription className="text-xs">
-                        {isUnassigned
-                          ? "Company-level (parent) OKRs. Each child row shows assigned team + progress."
-                          : "Progress is updated by the assigned team."}
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {!isUnassigned && (
-                        <Pill tone="neutral">
-                          Objectives: {safeArrObjective(team.objectives).length}
-                        </Pill>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          setOpenTeams((p: Record<string, boolean>) => ({
-                            ...p,
-                            [teamKey]: !isOpen,
-                          }))
-                        }
-                        className="h-8 w-8"
-                      >
-                        {isOpen ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
+              <motion.div
+                key={teamKey}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: teamIndex * 0.04, duration: 0.2 }}
+              >
+                <Card className={`overflow-hidden ${GLASS}`}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <CardTitle className="text-base font-semibold">
+                          {isUnassigned
+                            ? "Company-level OKRs (Parents)"
+                            : team.team_name}
+                        </CardTitle>
+                        <CardDescription className="text-xs mt-0.5">
+                          {isUnassigned
+                            ? "Parent OKRs. Child rows show team and progress."
+                            : "Progress updated by the team."}
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!isUnassigned && (
+                          <Pill tone="neutral">
+                            {safeArrObjective(team.objectives).length} objectives
+                          </Pill>
                         )}
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setOpenTeams((p: Record<string, boolean>) => ({
+                              ...p,
+                              [teamKey]: !isOpen,
+                            }))
+                          }
+                          className="h-8 w-8 shrink-0"
+                        >
+                          {isOpen ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </CardHeader>
+                  </CardHeader>
 
-                {isOpen && (
-                  <CardContent className="pt-0">
+                  <AnimatePresence initial={false}>
+                    {isOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                  <CardContent className="pt-0 pb-4">
                     {filteredFinal.length === 0 ? (
                       <EmptyState
                         title={
@@ -2556,12 +2612,13 @@ export default function CompanyOKRs(): React.ReactElement {
                             clampProgress(obj.progress) < 20;
 
                           return (
-                            <div
+                            <motion.div
                               key={obj.id}
+                              layout
                               className={`rounded-xl ${GLASS_SUB} overflow-hidden`}
                             >
-                              {/* Objective header button */}
                               <button
+                                type="button"
                                 onClick={() =>
                                   setOpenObjectiveById(
                                     (p: Record<string, boolean>) => ({
@@ -2570,52 +2627,52 @@ export default function CompanyOKRs(): React.ReactElement {
                                     })
                                   )
                                 }
-                                className="w-full text-left p-4"
+                                className="flex w-full items-start justify-between gap-3 rounded-xl p-4 text-left transition-colors hover:bg-muted/30"
                               >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="font-semibold text-sm leading-tight">
-                                        {obj.title}
-                                      </span>
-                                      {objectiveNeedsAttention ? (
-                                        <Pill tone="amber">Attention</Pill>
-                                      ) : (
-                                        <Pill tone="emerald">OK</Pill>
-                                      )}
-                                    </div>
-                                    {!isUnassigned && isChild ? (
-                                      <p className="mt-0.5 text-xs text-muted-foreground">
-                                        Parent:{" "}
-                                        <span className="text-foreground/70">
-                                          {parentTitle || obj.parent_id}
-                                        </span>
-                                      </p>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-semibold text-sm leading-tight text-foreground">
+                                      {obj.title}
+                                    </span>
+                                    {objectiveNeedsAttention ? (
+                                      <Pill tone="amber">Attention</Pill>
                                     ) : (
-                                      <p className="mt-0.5 text-xs text-muted-foreground">
-                                        {isUnassigned
-                                          ? "Company-level Objective (Parent)"
-                                          : "Team Objective"}
-                                      </p>
+                                      <Pill tone="emerald">OK</Pill>
                                     )}
                                   </div>
-                                  <div className="flex shrink-0 flex-col items-end gap-1">
-                                    <span className="text-xs font-medium text-muted-foreground">
-                                      Progress:{" "}
-                                      <span className="text-foreground">
-                                        {Math.round(clampProgress(obj.progress))}%
-                                      </span>
-                                    </span>
-                                    <div className="w-24">
-                                      <ProgressBar value={obj.progress} />
-                                    </div>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {!isUnassigned && isChild ? (
+                                      <>Parent: <span className="text-foreground/80">{parentTitle || obj.parent_id}</span></>
+                                    ) : (
+                                      isUnassigned ? "Company-level (Parent)" : "Team Objective"
+                                    )}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                                  <span className="text-xs font-medium text-muted-foreground">
+                                    <span className="text-foreground font-semibold">{Math.round(clampProgress(obj.progress))}%</span>
+                                  </span>
+                                  <div className="w-20">
+                                    <ProgressBar value={obj.progress} />
                                   </div>
+                                  {isObjOpen ? (
+                                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                  )}
                                 </div>
                               </button>
 
-                              {/* Objective body */}
-                              {isObjOpen && (
-                                <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-4">
+                              <AnimatePresence initial={false}>
+                                {isObjOpen && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: "auto", opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="overflow-hidden border-t border-border/40"
+                                  >
+                                <div className="px-4 pb-4 pt-3 space-y-4">
                                   {/* Parent weight editor */}
                                   {!isUnassigned && isChild && (
                                     <div
@@ -2814,7 +2871,7 @@ export default function CompanyOKRs(): React.ReactElement {
                                         return (
                                           <div
                                             key={kr.id}
-                                            className={`rounded-lg p-3 ${GLASS_SUB}`}
+                                            className={`rounded-lg border border-border/50 bg-muted/20 p-3 ${GLASS_SUB}`}
                                           >
                                             <div className="flex flex-col gap-2">
                                               {/* KR title + progress */}
@@ -3006,19 +3063,25 @@ export default function CompanyOKRs(): React.ReactElement {
                                     </div>
                                   )}
                                 </div>
+                                  </motion.div>
                               )}
-                            </div>
+                              </AnimatePresence>
+                            </motion.div>
                           );
                         })}
                       </div>
                     )}
                   </CardContent>
-                )}
-              </Card>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </Card>
+              </motion.div>
             );
           })}
         </div>
-      )}
+        )}
+      </section>
 
       {/* KR Comments Dialog */}
       <Dialog
@@ -3027,9 +3090,12 @@ export default function CompanyOKRs(): React.ReactElement {
           if (!v) setActiveKr(null);
         }}
       >
-        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col gap-4">
           <DialogHeader>
-            <DialogTitle>KR Comments</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              Key Result Comments
+            </DialogTitle>
           </DialogHeader>
           {activeKr !== null && (
             <div className="flex flex-col gap-3 min-h-0">

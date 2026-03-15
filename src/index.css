@@ -293,6 +293,111 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(
+        44rem 28rem at 92% -8%,
+        hsl(var(--primary) / 0.12) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        30rem 22rem at -8% 98%,
+        hsl(160 84% 39% / 0.10) 0%,
+        transparent 64%
+      );
+    background-attachment: fixed;
   }
+
+  #root {
+    @apply min-h-screen;
+  }
+}
+
+@layer components {
+  .app-main {
+    position: relative;
+  }
+
+  .app-page-enter {
+    animation: page-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Reusable animation utilities */
+  .animate-in-fade {
+    animation: fade-in 0.3s ease-out forwards;
+  }
+  .animate-in-slide-up {
+    animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-in-scale {
+    animation: scale-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px -5px hsl(var(--foreground) / 0.08);
+  }
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s; }
+  .stagger-5 { animation-delay: 0.25s; }
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Subtle backdrop motion (use .backdrop-float class) */
+@keyframes backdrop-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(2%, -1%) scale(1.02); }
+  66% { transform: translate(-1%, 2%) scale(0.98); }
+}
+.backdrop-float {
+  animation: backdrop-float 18s ease-in-out infinite;
+}
+.backdrop-float-slow {
+  animation: backdrop-float 22s ease-in-out infinite;
+  animation-delay: -4s;
+}
+.backdrop-float-slower {
+  animation: backdrop-float 20s ease-in-out infinite;
+  animation-delay: -8s;
 }

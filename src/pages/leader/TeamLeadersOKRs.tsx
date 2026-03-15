@@ -474,7 +474,7 @@ export default function TeamLeaderOKRs() {
   // --------------------
   if (!isLeader) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState title="Access Denied" description="This page is available for Team Leaders only." />
       </div>
     );
@@ -484,7 +484,7 @@ export default function TeamLeaderOKRs() {
 
   if (!data) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState title="No data" description="Unable to load Team OKRs." actionLabel="Retry" onAction={load} />
       </div>
     );
@@ -496,7 +496,7 @@ export default function TeamLeaderOKRs() {
   // UI
   // --------------------
   return (
-    <div className="p-6 space-y-6 relative">
+    <div className="app-page-enter relative space-y-6">
       {/* KR Notes Modal */}
       <Dialog
         open={krModalOpen}

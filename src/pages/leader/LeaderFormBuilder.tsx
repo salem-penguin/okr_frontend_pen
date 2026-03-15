@@ -323,7 +323,7 @@ export default function LeaderFormBuilder() {
   // If you want ONLY leaders to access this page, consider also checking user.role === 'team_leader'
   if (!user?.teamId) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState
           title="No Team Assigned"
           description="You are not assigned to a team. Please contact an administrator."
@@ -337,7 +337,7 @@ export default function LeaderFormBuilder() {
   }
 
   return (
-    <div className="p-6">
+    <div className="app-page-enter">
       <FormBuilder
         initialFields={initialFields}
         onSave={handleSave}

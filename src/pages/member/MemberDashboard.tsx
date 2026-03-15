@@ -661,7 +661,7 @@ export default function MemberDashboard() {
 
   if (!currentWeek) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState
           title="Unable to load dashboard"
           description="Could not load current week."
@@ -678,7 +678,7 @@ export default function MemberDashboard() {
     'not_submitted';
 
   return (
-    <div className="space-y-6">
+    <div className="app-page-enter space-y-6">
       <div>
         <h1 className="text-2xl font-bold">My Dashboard</h1>
         <p className="text-muted-foreground">Track your weekly report submissions</p>
@@ -729,7 +729,7 @@ export default function MemberDashboard() {
             onAction={() => navigate('/member/submit')}
           />
         ) : (
-          <div className="rounded-lg border bg-card">
+          <div>
             <Table>
               <TableHeader>
                 <TableRow>

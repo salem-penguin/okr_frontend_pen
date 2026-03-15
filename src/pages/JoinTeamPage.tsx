@@ -42,7 +42,7 @@ export default function JoinTeamPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl p-4">
+    <div className="app-page-enter mx-auto max-w-xl space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Join your team</CardTitle>

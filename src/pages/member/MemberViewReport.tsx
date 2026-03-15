@@ -235,7 +235,7 @@ export default function MemberViewReport() {
 
   if (!reportRow) {
     return (
-      <div className="p-6">
+      <div className="app-page-enter">
         <EmptyState
           title="Report Not Found"
           description="You haven't submitted a report for this week."
@@ -249,7 +249,7 @@ export default function MemberViewReport() {
   const submittedAt = reportRow.submitted_at ? new Date(reportRow.submitted_at) : null;
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="app-page-enter mx-auto max-w-3xl">
       <Button variant="ghost" onClick={() => navigate('/member')} className="mb-6">
         <ArrowLeft className="h-4 w-4 mr-2" />
         Back to Dashboard
