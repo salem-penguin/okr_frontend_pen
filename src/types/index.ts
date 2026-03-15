@@ -145,5 +145,27 @@ export interface AuthContextType {
 
 
 
+// Team creation request status
+export type TeamRequestStatus = 'pending' | 'approved' | 'rejected';
+
+// Team creation request
+export interface TeamCreationRequest {
+  id: string;
+  team_name: string;
+  requested_by: string;
+  requester_name?: string;
+  requester_email?: string;
+  status: TeamRequestStatus;
+  admin_note?: string | null;
+  requested_at: string;
+  reviewed_at?: string | null;
+  approved_team?: {
+    id: string;
+    name: string;
+    invite_code?: string;
+    leader_id?: string;
+  } | null;
+}
+
 // Theme type
 export type Theme = 'light' | 'dark' | 'system';

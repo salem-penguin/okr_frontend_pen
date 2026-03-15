@@ -117,8 +117,10 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   // If team missing for member/leader -> force join-team
+  // Exception: team leaders can access the team-request page without a team
   const needsTeam = user.role === "team_member" || user.role === "team_leader";
-  if (needsTeam && !teamId && !isOnJoinTeam) {
+  const isOnTeamRequest = pathname.startsWith("/leader/team-request");
+  if (needsTeam && !teamId && !isOnJoinTeam && !isOnTeamRequest) {
     return <Navigate to="/join-team" replace />;
   }
 

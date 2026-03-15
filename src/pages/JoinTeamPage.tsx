@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +65,21 @@ export default function JoinTeamPage() {
               Logged in as <span className="font-medium">{user?.email}</span>
             </p>
           </form>
+
+          {user?.role === "team_leader" && (
+            <div className="mt-4 rounded-lg border border-dashed border-border p-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                Don't have an invite code?{" "}
+                <Link
+                  to="/leader/team-request"
+                  className="font-medium text-primary hover:underline"
+                >
+                  Request a new team
+                </Link>{" "}
+                instead.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

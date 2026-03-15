@@ -8,6 +8,8 @@ import {
   Target,
   ChevronRight,
   Layers,
+  Users,
+  UserPlus,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NavLink } from "@/components/NavLink";
@@ -77,6 +79,7 @@ export function AppSidebar() {
     { title: "Company OKRs", url: "/ceo/okrs", icon: Target },
     { title: "OKR Tree", url: "/ceo/okr-alignment", icon: Layers },
     { title: "Form Builder", url: "/ceo/form-builder", icon: FormInput },
+    { title: "Team Requests", url: "/ceo/team-requests", icon: Users },
   ];
 
   const getLeaderMenuItems = (): MenuItem[] => [
@@ -84,6 +87,7 @@ export function AppSidebar() {
     { title: "Team OKRs", url: "/leader/okrs", icon: Target },
     { title: "Submit Report", url: "/leader/submit", icon: FileText },
     { title: "Team Form", url: "/leader/form-builder", icon: FormInput },
+    { title: "Request Team", url: "/leader/team-request", icon: UserPlus },
   ];
 
   const getMemberMenuItems = (): MenuItem[] => [

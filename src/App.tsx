@@ -112,12 +112,14 @@ import CEOFormBuilder from "@/pages/ceo/CEOFormBuilder";
 import CEOViewReport from "@/pages/ceo/CEOViewReport";
 import CompanyOKRs from "@/pages/ceo/CompanyOKRs";
 import OKRAlignment from "@/pages/ceo/OKRAlignment";
+import AdminTeamRequests from "@/pages/ceo/AdminTeamRequests";
 
 import LeaderDashboard from "@/pages/leader/LeaderDashboard";
 import LeaderSubmitReport from "@/pages/leader/LeaderSubmitReport";
 import LeaderFormBuilder from "@/pages/leader/LeaderFormBuilder";
 import LeaderViewMemberReport from "@/pages/leader/LeaderViewMemberReport";
 import TeamLeaderOKRs from "@/pages/leader/TeamLeadersOKRs";
+import TeamRequestCreate from "@/pages/leader/TeamRequestCreate";
 
 import MemberDashboard from "@/pages/member/MemberDashboard";
 import MemberSubmitReport from "@/pages/member/MemberSubmitReport";
@@ -169,6 +171,7 @@ const App = () => (
                 <Route path="/ceo/reports/:weekId/:leaderId" element={<CEOViewReport />} />
                 <Route path="/ceo/okrs" element={<CompanyOKRs />} />
                 <Route path="/ceo/okr-alignment" element={<OKRAlignment />} />
+                <Route path="/ceo/team-requests" element={<AdminTeamRequests />} />
               </Route>
 
               {/* Leader */}
@@ -184,6 +187,7 @@ const App = () => (
                 <Route path="/leader/form-builder" element={<LeaderFormBuilder />} />
                 <Route path="/leader/reports/:weekId/:memberId" element={<LeaderViewMemberReport />} />
                 <Route path="/leader/okrs" element={<TeamLeaderOKRs />} />
+                <Route path="/leader/team-request" element={<TeamRequestCreate />} />
               </Route>
 
               {/* Member */}
